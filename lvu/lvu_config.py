@@ -15,3 +15,4 @@ class LVUConfig:
     fps: int = None
     num_frames: int = 32
     use_tqdm: bool = False
+    extra_kwargs: dict = None

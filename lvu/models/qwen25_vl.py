@@ -161,18 +161,23 @@ def init_lvu_model(model, config: LVUConfig):
     model._get_initial_cache_position = _get_initial_cache_position.__get__(model)
     
     return model
-        
+
 def run_lvu_model(self, question, video_path, **generation_kwargs):
-    model = self.model
-    processor = self.processor
     lvu_config = self.config
     fps = lvu_config.fps
     num_frames = lvu_config.num_frames
+    extra_kwargs = lvu_config.extra_kwargs or {}
+    max_pixels = extra_kwargs.get("max_pixels", 360 * 420)
+    min_pixels = extra_kwargs.get("min_pixels", None)
+
     video_content = {
         "type": "video",
         "video": video_path,
-        "max_pixels": 360 * 420,
     }
+    if max_pixels is not None:
+        video_content["max_pixels"] = max_pixels
+    if min_pixels is not None:
+        video_content["min_pixels"] = min_pixels
     if fps is not None:
         video_content["fps"] = fps
     elif num_frames is not None:
@@ -189,6 +194,13 @@ def run_lvu_model(self, question, video_path, **generation_kwargs):
             ],
         }
     ]
+    return chat_lvu_model(self, messages, **generation_kwargs)
+    
+def chat_lvu_model(self, messages, **generation_kwargs):
+    model = self.model
+    processor = self.processor
+    lvu_config = self.config
+    
     # Process the messages
     #In Qwen 2.5 VL, frame rate information is also input into the model to align with absolute time.
     # Preparation for inference

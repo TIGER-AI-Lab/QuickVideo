@@ -14,6 +14,10 @@ class LVUConfig:
     video_group_size: int = None # per frame
     prefill_prune_starting_layer: int = None
     layer_idx: int = None
+    is_last_layer: bool = False
+    fps: int = None
+    num_frames: int = 32
+    use_tqdm: bool = False
 
 class LVU:
     def __init__(self, config, model=None, processor=None, model_init_kwargs={}):
@@ -57,9 +61,12 @@ if __name__ == "__main__":
         model_name_or_path="Qwen/Qwen2.5-VL-7B-Instruct", 
         model_type="qwen25_vl",
         top_k_predict_type="key_norms_small",
-        video_group_size=4,
-        top_k=10,
-        prefill_prune_starting_layer=1,
+        video_group_size=16,
+        top_k=64,
+        prefill_prune_starting_layer=None,
+        adaptive_local_attention=True,
+        num_frames=1024,
+        use_tqdm=True,
     )
     lvu = LVU(config)
     

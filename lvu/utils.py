@@ -160,23 +160,12 @@ def get_top_k_mask_to_predict(attn_weights, keys, values, outputs, top_k=100, pr
     return top_k_select_mask
 
 
-def preprocess_hidden_states(
-    hidden_states: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
-    attention_mask: torch.Tensor,
-    position_ids: torch.LongTensor,
-):
-    if isinstance(hidden_states, tuple):
-        hidden_states, attention_mask, position_ids = hidden_states
-    else:
-        hidden_states = hidden_states
-        attention_mask = attention_mask
-        position_ids = position_ids
-    return hidden_states, attention_mask, position_ids
-
 def post_process_kv_cache(
     hidden_states: torch.Tensor,
     attention_mask: torch.Tensor,
     position_ids: torch.LongTensor,
+    cache_position: torch.Tensor,
+    position_embeddings: torch.Tensor,
     attn_weights: torch.Tensor,
     present_key_value: Union[Tuple[torch.Tensor, torch.Tensor], DynamicCache],
     lvu_config: LVUConfig,
@@ -184,8 +173,10 @@ def post_process_kv_cache(
     """
     Args:
         hidden_states: (bz, Q_len, C)
-        position_ids: (bz, Q_len)
         attn_weights: (bz, 1, Q_len, K_len)
+        position_ids: (bz, Q_len)
+        cache_position: (bz, Q_len)
+        position_embeddings: (bz, Q_len, C)
         present_key_value: keys and values: ((bz, num_heads, K_len, C), (bz, num_heads, K_len, C))
         values: 
         top_k: int
@@ -194,6 +185,8 @@ def post_process_kv_cache(
         hidden_states: (bz, top_k, C)
         attention_mask: (bz, top_k) or None
         position_ids: (bz, top_k) or None
+        cache_position: (bz, top_k) or None
+        position_embeddings: (bz, top_k, C) or None
         present_key_value: ((bz, num_heads, top_k, C), (bz, num_heads, top_k, C))
         
     """
@@ -212,14 +205,16 @@ def post_process_kv_cache(
     else:
         raise ValueError(f"Unknown present_key_value type: {type(present_key_value)}")
     bz, num_heads, k_len, _ = keys.shape
+    assert bz == 1, f"Only support batch size 1 for now, but got {bz}"
     q_len = hidden_states.shape[1]
     
     if not top_k or top_k <= 0 or q_len <= top_k or \
         (isinstance(lvu_config.top_k_starting_layer, int) and lvu_config.top_k_starting_layer > 0 and lvu_config.layer_idx < lvu_config.top_k_starting_layer):
         # no need to prune
-        return hidden_states, attention_mask, position_ids, present_key_value
+        return hidden_states, attention_mask, position_ids, cache_position, position_embeddings, present_key_value
     
     # only process the current new k
+    old_k_shape = keys.shape
     attn_weights = attn_weights[:, :, -q_len:] if attn_weights is not None else None
     past_keys = keys[:, :, :-q_len]
     past_values = values[:, :, :-q_len]
@@ -233,9 +228,11 @@ def post_process_kv_cache(
     top_k_hidden_states_list = [] if prune_for_next_layer else None
     top_k_attention_mask_list = [] if prune_for_next_layer else None
     top_k_position_ids_list = [] if prune_for_next_layer else None
+    top_k_cache_position_list = [] if prune_for_next_layer else None
+    top_k_position_embeddings_list = [] if prune_for_next_layer else None
     for bz_i in range(bz):
         top_k_select_mask_i = top_k_select_mask[bz_i]
-        indices = torch.nonzero(top_k_select_mask_i, as_tuple=True)[0]
+        indices = torch.nonzero(top_k_select_mask_i, as_tuple=True)[0].cpu()
         assert len(indices) == top_k, f"top_k_select_mask_i: {top_k_select_mask_i}, indices: {indices}"
         
         bz_top_k_keys = keys[bz_i][:, indices]
@@ -245,7 +242,30 @@ def post_process_kv_cache(
         
         if prune_for_next_layer:
             bz_top_k_hidden_states = hidden_states[bz_i][indices]
-            bz_top_k_position_ids = position_ids[bz_i][indices]
+            bz_top_k_cache_position = cache_position[indices]
+            if position_ids.dim() == 3:
+                # (constant, bz, q_len)
+                bz_top_k_position_ids = position_ids[:, bz_i][:, indices]
+            elif position_ids.dim() == 2:
+                # (bz, q_len)
+                bz_top_k_position_ids = position_ids[bz_i][indices]
+            if isinstance(position_embeddings, tuple):
+                bz_top_k_position_embeddings = []
+                for x in position_embeddings:
+                    if x.dim() == 4:
+                        # (constant, bz, q_len, c)
+                        bz_top_k_position_embeddings.append(x[:, bz_i][:, indices])
+                    elif x.dim() == 3:
+                        # (bz, q_len, c)
+                        bz_top_k_position_embeddings.append(x[bz_i][indices])
+                    else:
+                        raise ValueError(f"Unknown position_embeddings shape: {x.shape}")
+                bz_top_k_position_embeddings = tuple(bz_top_k_position_embeddings)
+            elif position_embeddings.dim() == 3:
+                # (bz, q_len, c)
+                bz_top_k_position_embeddings = position_embeddings[bz_i][indices]
+            else:
+                raise ValueError(f"Unknown position_embeddings type: {type(position_embeddings)}")
             if attention_mask is not None:
                 if attention_mask.dim() == 2:
                     bz_top_k_attention_mask = attention_mask[bz_i][indices]
@@ -258,6 +278,8 @@ def post_process_kv_cache(
             top_k_hidden_states_list.append(bz_top_k_hidden_states)
             top_k_attention_mask_list.append(bz_top_k_attention_mask)
             top_k_position_ids_list.append(bz_top_k_position_ids)
+            top_k_cache_position_list.append(bz_top_k_cache_position)
+            top_k_position_embeddings_list.append(bz_top_k_position_embeddings)
             
     top_k_keys = torch.stack(top_k_keys_list, dim=0)
     top_k_values = torch.stack(top_k_values_list, dim=0)
@@ -272,7 +294,34 @@ def post_process_kv_cache(
     
     if prune_for_next_layer:
         hidden_states = torch.stack(top_k_hidden_states_list, dim=0)
-        attention_mask = torch.stack(top_k_attention_mask_list, dim=0)
-        position_ids = torch.stack(top_k_position_ids_list, dim=0)
+        if not top_k_attention_mask_list or None in top_k_attention_mask_list:
+            attention_mask = None
+        else:
+            attention_mask = torch.stack(top_k_attention_mask_list, dim=0)
+        if position_ids.dim() == 3:
+            position_ids = torch.stack(top_k_position_ids_list, dim=1)
+        elif position_ids.dim() == 2:
+            position_ids = torch.stack(top_k_position_ids_list, dim=0)
+        cache_position = top_k_cache_position_list[0]
+        
+        if isinstance(position_embeddings, tuple):
+            new_position_embeddings = []
+            for i in range(len(position_embeddings)):
+                if position_embeddings[i].dim() == 4:
+                    # (constant, bz, q_len, c), stack in the batch dim
+                    new_position_embeddings.append(torch.stack([x[i] for x in top_k_position_embeddings_list], dim=1))
+                elif position_embeddings[i].dim() == 3:
+                    # (bz, q_len, c), stack in the batch dim
+                    new_position_embeddings.append(torch.stack([x[i] for x in top_k_position_embeddings_list], dim=0))
+                else:
+                    raise ValueError(f"Unknown position_embeddings shape: {position_embeddings[i].shape}")
+            position_embeddings = tuple(new_position_embeddings)
+        elif position_embeddings.dim() == 3:
+            # (bz, q_len, c), stack in the batch dim
+            position_embeddings = torch.stack(top_k_position_embeddings_list, dim=0)
+        else:
+            raise ValueError(f"Unknown position_embeddings type: {type(position_embeddings)}")
+        
+    # print(f"Reduced keys and values from {old_k_shape} to {keys.shape}")
     
-    return hidden_states, attention_mask, position_ids, present_key_value
+    return hidden_states, attention_mask, position_ids, cache_position, position_embeddings, present_key_value

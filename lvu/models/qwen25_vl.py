@@ -1,11 +1,13 @@
 import torch
 import numpy as np
 import dataclasses
+import time
+from tqdm import tqdm
 from typing import Optional, Tuple
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLModel
 from transformers.cache_utils import Cache
 from qwen_vl_utils import process_vision_info
-from ..utils import post_process_kv_cache, preprocess_hidden_states
+from ..utils import post_process_kv_cache
 from ..lvu import LVUConfig    
 
 def lvu_qwen25_vl_decoder_layer_forward(
@@ -22,7 +24,10 @@ def lvu_qwen25_vl_decoder_layer_forward(
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
     """
     Args:
-        hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
+        hidden_states (`torch.FloatTensor`): 
+            - input to the layer of shape `(batch, seq_len, embed_dim)`
+            - or a tuple of `(hidden_states, attention_mask, position_ids, cache_position, position_embeddings)` 
+                meaning that the previous layer has prune the hidden states to topk
         attention_mask (`torch.FloatTensor`, *optional*): attention mask of size
             `(batch, sequence_length)` where padding elements are indicated by 0.
         output_attentions (`bool`, *optional*):
@@ -44,17 +49,16 @@ def lvu_qwen25_vl_decoder_layer_forward(
     lvu_config = getattr(self, "lvu_config", None)
     if lvu_config is None:
         raise ValueError("LVUConfig is not set in the model. Please initialize the LVU model first.")
-    hidden_states, attention_mask, position_ids = preprocess_hidden_states(
-        hidden_states=hidden_states,
-        attention_mask=attention_mask,
-        position_ids=position_ids,
-    )
+    
+    if isinstance(hidden_states, tuple):
+        # this means that previous layer has prune the hidden states to topk
+        hidden_states, attention_mask, position_ids, cache_position, position_embeddings = hidden_states
+
     residual = hidden_states
 
     hidden_states = self.input_layernorm(hidden_states)
 
     # Self Attention
-    
     hidden_states, self_attn_weights, present_key_value = self.self_attn(
         hidden_states=hidden_states,
         attention_mask=attention_mask,
@@ -65,15 +69,17 @@ def lvu_qwen25_vl_decoder_layer_forward(
         cache_position=cache_position,
         position_embeddings=position_embeddings,
     )
-    hidden_states, attention_mask, position_ids, present_key_value = post_process_kv_cache(
+    hidden_states = residual + hidden_states
+    hidden_states, attention_mask, position_ids, cache_position, position_embeddings, present_key_value = post_process_kv_cache(
         hidden_states,
         attention_mask,
-        position_ids,
+        position_ids=position_ids,
+        cache_position=cache_position,
+        position_embeddings=position_embeddings,
         attn_weights=self_attn_weights,
         present_key_value=present_key_value,
         lvu_config=lvu_config,
     )
-    hidden_states = residual + hidden_states
     
     # Fully Connected
     residual = hidden_states
@@ -81,9 +87,11 @@ def lvu_qwen25_vl_decoder_layer_forward(
     hidden_states = self.mlp(hidden_states)
     hidden_states = residual + hidden_states
 
-    if lvu_config.prefill_prune_starting_layer is not None and lvu_config.layer_idx >= lvu_config.prefill_prune_starting_layer:
-        # prune for next layer
-        hidden_states = (hidden_states, attention_mask, position_ids)
+    if lvu_config.prefill_prune_starting_layer is not None and \
+        lvu_config.layer_idx >= lvu_config.prefill_prune_starting_layer and \
+        not lvu_config.is_last_layer:
+        # pass all the pruned information to next layer. If the last layer, we don't need to save other information except hidden_states
+        hidden_states = (hidden_states, attention_mask, position_ids, cache_position, position_embeddings)
         
     outputs = (hidden_states,)
 
@@ -144,6 +152,11 @@ def init_lvu_model(model, config: LVUConfig):
         layer.forward = lvu_qwen25_vl_decoder_layer_forward.__get__(layer)
         layer.lvu_config = dataclasses.replace(config)
         layer.lvu_config.layer_idx = layer.self_attn.layer_idx # should be same as i
+        if i == len(decoder_layers) - 1:
+            # last layer
+            layer.lvu_config.is_last_layer = True
+        else:
+            layer.lvu_config.is_last_layer = False
     model._get_initial_cache_position = _get_initial_cache_position.__get__(model)
     
     return model
@@ -152,18 +165,25 @@ def run_lvu_model(self, question, video_path, **generation_kwargs):
     model = self.model
     processor = self.processor
     lvu_config = self.config
-    fps = 0.2
+    fps = lvu_config.fps
+    num_frames = lvu_config.num_frames
+    video_content = {
+        "type": "video",
+        "video": video_path,
+        "max_pixels": 360 * 420,
+    }
+    if fps is not None:
+        video_content["fps"] = fps
+    elif num_frames is not None:
+        video_content["nframes"] = num_frames
+    else:
+        raise ValueError("Either fps or num_frames should be set.")
     # Messages containing a local video path and a text query
     messages = [
         {
             "role": "user",
             "content": [
-                {
-                    "type": "video",
-                    "video": video_path,
-                    "max_pixels": 360 * 420,
-                    "fps": fps,
-                },
+                video_content,
             ],
         }
     ]
@@ -179,6 +199,15 @@ def run_lvu_model(self, question, video_path, **generation_kwargs):
     )
     image_inputs, video_inputs, video_kwargs = process_vision_info(messages, return_video_kwargs=True)
     
+    # whole_video_inputs = processor(
+    #     text=[video_text],
+    #     images=image_inputs,
+    #     videos=video_inputs,
+    #     padding=True,
+    #     return_tensors="pt",
+    #     **video_kwargs,
+    # )
+    
     assert len(video_inputs) <= 1, "Only one video is supported for now."
     video_group_size = lvu_config.video_group_size
     if video_group_size is not None and video_group_size > 0:
@@ -188,18 +217,21 @@ def run_lvu_model(self, question, video_path, **generation_kwargs):
         assert all(len(group) % 2 == 0 for group in video_groups), "The video group size should be even."
     else:
         video_groups = [video_inputs[0]]
+    print("Sampled video frames: ", len(video_inputs[0]))
+    print("Video groups: ", [len(group) for group in video_groups])
     # start to process the video groups
     past_video_groups = None
     past_key_values = None
     past_len = 0
     past_pixel_values_video_len = 0
-    for i, video_group_i in enumerate(video_groups):
+    for i, video_group_i in tqdm(enumerate(video_groups), desc="Processing video groups", total=len(video_groups), disable=not lvu_config.use_tqdm):
         if past_video_groups is None:
             video_group_0_i = video_group_i
         else:
             video_group_0_i = np.concatenate((past_video_groups, video_group_i), axis=0)
         past_video_groups = video_group_0_i
         
+        start = time.time()
         group_i_inputs = processor(
             text=[video_text],
             images=image_inputs,
@@ -227,11 +259,31 @@ def run_lvu_model(self, question, video_path, **generation_kwargs):
         group_i_inputs['attention_mask'] = attention_mask
         group_i_inputs['cache_position'] = cache_position
         group_i_inputs['pixel_values_videos'] = pixel_values_videos
-        
         group_i_inputs = group_i_inputs.to(model.device)
-        group_i_inputs['past_key_values'] = past_key_values
-        outputs = model(**group_i_inputs, use_cache=True)
-        past_key_values = outputs.past_key_values
+        group_i_inputs['use_cache'] = True
+        end = time.time()
+        print(f"Preprocessing time for video group {i}: {end - start:.2f}s")
+        if lvu_config.adaptive_local_attention:
+            group_i_inputs['past_key_values'] = past_key_values
+            with torch.no_grad():
+                outputs = model(**group_i_inputs)
+            # later video groups will use the past key values
+            past_key_values = outputs.past_key_values
+        else:
+            with torch.no_grad():
+                outputs = model(**group_i_inputs)
+            if not past_key_values:
+                # first time parsing, the video grid information is not correct
+                past_key_values = outputs.past_key_values
+            else:
+                # update the past key values
+                if isinstance(outputs.past_key_values, Cache):
+                    for i in range(len(outputs.past_key_values)):
+                        past_key_values.update(outputs.past_key_values[i][0], outputs.past_key_values[i][1], i)
+                else:
+                    for i in range(len(outputs.past_key_values)):
+                        for j in range(len(outputs.past_key_values[i])):
+                            past_key_values[i][j] = torch.cat((past_key_values[i][j], outputs.past_key_values[i][j]), dim=2)
 
     assert len(past_video_groups) == video_inputs[0].shape[0], "The length of the past video groups should be equal to the input video length."
     final_inputs = processor(

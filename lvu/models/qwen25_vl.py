@@ -141,7 +141,7 @@ def init_lvu_model(model, config: LVUConfig):
     
     for i, layer in enumerate(decoder_layers):
         # Set the forward function for each decoder layer and filling the parameters in the config
-        # layer.forward = lvu_qwen25_vl_decoder_layer_forward.__get__(layer)
+        layer.forward = lvu_qwen25_vl_decoder_layer_forward.__get__(layer)
         layer.lvu_config = dataclasses.replace(config)
         layer.lvu_config.layer_idx = layer.self_attn.layer_idx # should be same as i
     model._get_initial_cache_position = _get_initial_cache_position.__get__(model)

@@ -2,22 +2,7 @@ import torch
 from dataclasses import dataclass
 from transformers import AutoProcessor, AutoModelForImageTextToText
 from .models import lvu_init_model_map, lvu_run_model_map
-
-@dataclass
-class LVUConfig:
-    model_name_or_path: str
-    model_type: str = "qwen25_vl"
-    top_k_predict_type: str = "key_norms_small"
-    top_k: int = None
-    top_k_starting_layer: int = None
-    adaptive_local_attention: bool = True
-    video_group_size: int = None # per frame
-    prefill_prune_starting_layer: int = None
-    layer_idx: int = None
-    is_last_layer: bool = False
-    fps: int = None
-    num_frames: int = 32
-    use_tqdm: bool = False
+from .lvu_config import LVUConfig
 
 class LVU:
     def __init__(self, config, model=None, processor=None, model_init_kwargs={}):
@@ -61,11 +46,11 @@ if __name__ == "__main__":
         model_name_or_path="Qwen/Qwen2.5-VL-7B-Instruct", 
         model_type="qwen25_vl",
         top_k_predict_type="key_norms_small",
-        video_group_size=16,
-        top_k=64,
+        video_group_size=500,
+        top_k=None,
         prefill_prune_starting_layer=None,
         adaptive_local_attention=True,
-        num_frames=1024,
+        num_frames=512,
         use_tqdm=True,
     )
     lvu = LVU(config)

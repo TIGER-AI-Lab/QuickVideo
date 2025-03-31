@@ -5,10 +5,11 @@ import time
 from tqdm import tqdm
 from typing import Optional, Tuple
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLModel
+from transformers.feature_extraction_utils import BatchFeature
 from transformers.cache_utils import Cache
 from qwen_vl_utils import process_vision_info
 from ..utils import post_process_kv_cache
-from ..lvu import LVUConfig    
+from ..lvu_config import LVUConfig
 
 def lvu_qwen25_vl_decoder_layer_forward(
     self,
@@ -212,35 +213,48 @@ def run_lvu_model(self, question, video_path, **generation_kwargs):
     assert len(video_inputs) <= 1, "Only one video is supported for now."
     video_group_size = lvu_config.video_group_size
     if video_group_size is not None and video_group_size > 0:
-        video_groups = [
-            video_inputs[0][i : i + video_group_size] for i in range(0, len(video_inputs[0]), video_group_size)
-        ]
+        video_groups = video_inputs[0].split(video_group_size)
         assert all(len(group) % 2 == 0 for group in video_groups), "The video group size should be even."
         video_groups_tokens = [int(n_video_tokens * (len(group) / len(video_inputs[0]))) for group in video_groups]
+        video_grid_thw = whole_inputs['video_grid_thw'][0]
+        video_groups_grid_thw = []
+        for group in video_groups:
+            video_groups_grid_thw.append(
+                torch.tensor(
+                    [int(video_grid_thw[0] * (len(group) / len(video_inputs[0]))),
+                    video_grid_thw[1],
+                    video_grid_thw[2]]
+                ).unsqueeze(0)
+            )
+        pixel_values_videos_group_size = int((video_group_size / len(video_inputs[0])) * whole_inputs['pixel_values_videos'].shape[0])
+        pixel_values_videos_groups = whole_inputs['pixel_values_videos'].split(pixel_values_videos_group_size)
     else:
         video_groups = [video_inputs[0]]
         video_groups_tokens = [n_video_tokens]
-    print("Sampled video frames: ", len(video_inputs[0]))
-    print("Video groups: ", [len(group) for group in video_groups])
-    print("Video groups tokens: ", video_groups_tokens)
+        video_groups_grid_thw = [whole_inputs['video_grid_thw']]
+        pixel_values_videos_groups = [whole_inputs['pixel_values_videos']]
+
+    # print("Sampled video frames: ", len(video_inputs[0]))
+    # print("Video groups: ", [len(group) for group in video_groups])
+    # print("Video groups tokens: ", video_groups_tokens)
+    # print("Video groups grid thw: ", video_groups_grid_thw)
+    # print("Pixel values videos groups: ", [group.shape for group in pixel_values_videos_groups])
+    
     # start to process the video groups
     past_key_values = None
     past_len = 0
     for i, video_group_i in tqdm(enumerate(video_groups), desc="Processing video groups", total=len(video_groups), disable=not lvu_config.use_tqdm):
-        # second time parsing, the video grid information correct
-        group_i_inputs = processor(
-            text=[text], # actually not used
-            images=image_inputs,
-            videos=[video_group_i],
-            padding=True,
-            return_tensors="pt",
-            **video_kwargs,
-        )
+        group_i_inputs = {
+            "video_grid_thw": video_groups_grid_thw[i],
+            "second_per_grid_ts": whole_inputs['second_per_grid_ts'],
+            "pixel_values_videos": pixel_values_videos_groups[i],
+        }
+        group_i_inputs = BatchFeature(data=group_i_inputs)
         if past_len == 0:
             # find the first video token id
-            first_video_token_id_idx = (group_i_inputs['input_ids'] == model.config.video_token_id).nonzero(as_tuple=True)[1][0].item()
-            group_i_inputs['input_ids'] = group_i_inputs['input_ids'][:, past_len:past_len + first_video_token_id_idx + video_groups_tokens[i]]
-            group_i_inputs['attention_mask'] = group_i_inputs['attention_mask'][:, past_len:past_len + first_video_token_id_idx + video_groups_tokens[i]]
+            first_video_token_id_idx = (whole_inputs['input_ids'] == model.config.video_token_id).nonzero(as_tuple=True)[1][0].item()
+            group_i_inputs['input_ids'] = whole_inputs['input_ids'][:, past_len:past_len + first_video_token_id_idx + video_groups_tokens[i]]
+            group_i_inputs['attention_mask'] = whole_inputs['attention_mask'][:, past_len:past_len + first_video_token_id_idx + video_groups_tokens[i]]
         else:
             n_video_tokens = video_groups_tokens[i]
             group_i_inputs['input_ids'] = whole_inputs['input_ids'][:, past_len:past_len + n_video_tokens]
@@ -273,12 +287,14 @@ def run_lvu_model(self, question, video_path, **generation_kwargs):
                             past_key_values[i][j] = torch.cat((past_key_values[i][j], outputs.past_key_values[i][j]), dim=2)
 
     assert past_len < whole_inputs['input_ids'].shape[1], "The past length should be less than the final input length."
-    whole_inputs['input_ids'] = whole_inputs['input_ids'][:, past_len:]
-    whole_inputs['attention_mask'] = whole_inputs['attention_mask'][:, past_len:]
-    whole_inputs['cache_position'] = torch.arange(whole_inputs.input_ids.shape[1], dtype=torch.int64, device=model.device) + past_len
-    whole_inputs = whole_inputs.to(model.device)
-    whole_inputs['past_key_values'] = past_key_values
-    generated_ids = model.generate(**whole_inputs, **generation_kwargs)
+    final_inputs = {
+        "input_ids": whole_inputs['input_ids'][:, past_len:],
+        "attention_mask": whole_inputs['attention_mask'][:, past_len:],
+    }
+    final_inputs['cache_position'] = torch.arange(whole_inputs.input_ids.shape[1], dtype=torch.int64, device=model.device) + past_len
+    final_inputs = whole_inputs.to(model.device)
+    final_inputs['past_key_values'] = past_key_values
+    generated_ids = model.generate(**final_inputs, **generation_kwargs)
         
     generated_ids_trimmed = [
         out_ids[len(in_ids) :] for in_ids, out_ids in zip(whole_inputs.input_ids, generated_ids)

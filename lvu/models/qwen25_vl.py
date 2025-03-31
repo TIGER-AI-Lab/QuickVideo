@@ -243,11 +243,12 @@ def run_lvu_model(self, question, video_path, **generation_kwargs):
     # start to process the video groups
     past_key_values = None
     past_len = 0
-    for i, video_group_i in tqdm(enumerate(video_groups), desc="Processing video groups", total=len(video_groups), disable=not lvu_config.use_tqdm):
+    for i, pixel_values_videos_groups_i in tqdm(enumerate(pixel_values_videos_groups), 
+        desc="Processing video groups", total=len(pixel_values_videos_groups), disable=not lvu_config.use_tqdm):
         group_i_inputs = {
             "video_grid_thw": video_groups_grid_thw[i],
             "second_per_grid_ts": whole_inputs['second_per_grid_ts'],
-            "pixel_values_videos": pixel_values_videos_groups[i],
+            "pixel_values_videos": pixel_values_videos_groups_i,
         }
         group_i_inputs = BatchFeature(data=group_i_inputs)
         if past_len == 0:

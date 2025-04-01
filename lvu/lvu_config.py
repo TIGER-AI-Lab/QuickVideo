@@ -16,6 +16,7 @@ class LVUConfig:
     use_tqdm: bool = False
     extra_kwargs: dict = None
     enable: bool = True
+    cache_dir: str = None
     
 @dataclass
 class LVULayerConfig:

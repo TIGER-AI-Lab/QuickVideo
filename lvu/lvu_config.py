@@ -36,7 +36,7 @@ class LVULayerConfig:
             raise ValueError("is_last_layer cannot be None")
         if isinstance(self.lvu_config.prefill_prune_starting_layer, int) and \
             self.lvu_config.prefill_prune_starting_layer >= 0 and \
-            self.lvu_config.layer_idx >= self.lvu_config.prefill_prune_starting_layer:
+            self.layer_idx >= self.lvu_config.prefill_prune_starting_layer:
             self.prune_for_next_layer = True
         else:
             self.prune_for_next_layer = False

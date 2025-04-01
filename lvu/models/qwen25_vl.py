@@ -89,7 +89,7 @@ def lvu_qwen25_vl_decoder_layer_forward(
     hidden_states = self.mlp(hidden_states)
     hidden_states = residual + hidden_states
 
-    if lvu_config.enable and lvu_layer_config.prune_for_next_layer and not lvu_config.is_last_layer:
+    if lvu_config.enable and lvu_layer_config.prune_for_next_layer and not lvu_layer_config.is_last_layer:
         # pass all the pruned information to next layer. If the last layer, we don't need to save other information except hidden_states
         hidden_states = (hidden_states, attention_mask, position_ids, cache_position, position_embeddings)
         

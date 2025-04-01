@@ -200,9 +200,9 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     text = processor.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
     )
-    image_inputs, video_inputs, video_kwargs = process_vision_info(messages, return_video_kwargs=True)
     
     start = time.time()
+    image_inputs, video_inputs, video_kwargs = process_vision_info(messages, return_video_kwargs=True)
     whole_inputs = processor(
         text=text,
         images=image_inputs,

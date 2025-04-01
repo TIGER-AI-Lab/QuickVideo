@@ -2,7 +2,7 @@ import torch
 import random
 import torch.nn.functional as F
 from typing import Tuple, Union
-from .lvu_config import LVUConfig
+from .lvu_config import LVUConfig, LVULayerConfig
 from transformers.cache_utils import DynamicCache
 def get_top_k_mask_to_predict(attn_weights, keys, values, outputs, top_k=100, predict_type="attention_weights"):
     """
@@ -168,7 +168,7 @@ def post_process_kv_cache(
     position_embeddings: torch.Tensor,
     attn_weights: torch.Tensor,
     present_key_value: Union[Tuple[torch.Tensor, torch.Tensor], DynamicCache],
-    lvu_config: LVUConfig,
+    lvu_layer_config: LVULayerConfig,
 ):
     """
     Args:
@@ -190,13 +190,20 @@ def post_process_kv_cache(
         present_key_value: ((bz, num_heads, top_k, C), (bz, num_heads, top_k, C))
         
     """
+    if lvu_layer_config is None:
+        return hidden_states, attention_mask, position_ids, cache_position, position_embeddings, present_key_value
+    lvu_config = lvu_layer_config.lvu_config
+    
     top_k = lvu_config.top_k
     predict_type = lvu_config.top_k_predict_type
-    layer_idx = lvu_config.layer_idx
-    if lvu_config.prefill_prune_starting_layer is not None and lvu_config.layer_idx >= lvu_config.prefill_prune_starting_layer:
-        prune_for_next_layer = True
-    else:
-        prune_for_next_layer = False
+    layer_idx = lvu_layer_config.layer_idx
+    prune_for_next_layer = lvu_layer_config.prune_for_next_layer
+    q_len = hidden_states.shape[1]
+    
+    if not lvu_config.enable or not top_k or top_k <= 0 or q_len <= top_k or \
+        (isinstance(lvu_config.top_k_starting_layer, int) and lvu_config.top_k_starting_layer > 0 and lvu_config.layer_idx < lvu_config.top_k_starting_layer):
+        # no need to prune
+        return hidden_states, attention_mask, position_ids, cache_position, position_embeddings, present_key_value
     
     if isinstance(present_key_value, DynamicCache):
         keys, values = present_key_value[layer_idx]
@@ -206,12 +213,6 @@ def post_process_kv_cache(
         raise ValueError(f"Unknown present_key_value type: {type(present_key_value)}")
     bz, num_heads, k_len, _ = keys.shape
     assert bz == 1, f"Only support batch size 1 for now, but got {bz}"
-    q_len = hidden_states.shape[1]
-    
-    if not top_k or top_k <= 0 or q_len <= top_k or \
-        (isinstance(lvu_config.top_k_starting_layer, int) and lvu_config.top_k_starting_layer > 0 and lvu_config.layer_idx < lvu_config.top_k_starting_layer):
-        # no need to prune
-        return hidden_states, attention_mask, position_ids, cache_position, position_embeddings, present_key_value
     
     # only process the current new k
     old_k_shape = keys.shape

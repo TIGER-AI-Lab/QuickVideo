@@ -59,7 +59,7 @@ if __name__ == "__main__":
         model_name_or_path="Qwen/Qwen2.5-VL-7B-Instruct", 
         model_type="qwen25_vl",
         top_k_predict_type="key_norms_small",
-        video_group_size=16,
+        video_group_size=4,
         top_k=None,
         prefill_prune_starting_layer=None,
         adaptive_local_attention=True,

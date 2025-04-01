@@ -9,7 +9,7 @@ from transformers.feature_extraction_utils import BatchFeature
 from transformers.cache_utils import Cache
 from qwen_vl_utils import process_vision_info
 from ..utils import post_process_kv_cache
-from ..lvu_config import LVUConfig
+from ..lvu_config import LVUConfig, LVULayerConfig
 
 def lvu_qwen25_vl_decoder_layer_forward(
     self,
@@ -47,7 +47,8 @@ def lvu_qwen25_vl_decoder_layer_forward(
             Arbitrary kwargs to be ignored, used for FSDP and other methods that injects code
             into the model
     """
-    lvu_config = getattr(self, "lvu_config", None)
+    lvu_layer_config = getattr(self, "lvu_layer_config", None)
+    lvu_config = getattr(lvu_layer_config, "lvu_config", None)
     if lvu_config is None:
         raise ValueError("LVUConfig is not set in the model. Please initialize the LVU model first.")
     
@@ -79,7 +80,7 @@ def lvu_qwen25_vl_decoder_layer_forward(
         position_embeddings=position_embeddings,
         attn_weights=self_attn_weights,
         present_key_value=present_key_value,
-        lvu_config=lvu_config,
+        lvu_layer_config=lvu_layer_config,
     )
     
     # Fully Connected
@@ -88,9 +89,7 @@ def lvu_qwen25_vl_decoder_layer_forward(
     hidden_states = self.mlp(hidden_states)
     hidden_states = residual + hidden_states
 
-    if lvu_config.prefill_prune_starting_layer is not None and \
-        lvu_config.layer_idx >= lvu_config.prefill_prune_starting_layer and \
-        not lvu_config.is_last_layer:
+    if lvu_config.enable and lvu_layer_config.prune_for_next_layer and not lvu_config.is_last_layer:
         # pass all the pruned information to next layer. If the last layer, we don't need to save other information except hidden_states
         hidden_states = (hidden_states, attention_mask, position_ids, cache_position, position_embeddings)
         
@@ -151,13 +150,7 @@ def init_lvu_model(model, config: LVUConfig):
     for i, layer in enumerate(decoder_layers):
         # Set the forward function for each decoder layer and filling the parameters in the config
         layer.forward = lvu_qwen25_vl_decoder_layer_forward.__get__(layer)
-        layer.lvu_config = dataclasses.replace(config)
-        layer.lvu_config.layer_idx = layer.self_attn.layer_idx # should be same as i
-        if i == len(decoder_layers) - 1:
-            # last layer
-            layer.lvu_config.is_last_layer = True
-        else:
-            layer.lvu_config.is_last_layer = False
+        layer.lvu_layer_config = LVULayerConfig(layer_idx=layer.self_attn.layer_idx, is_last_layer=(i == len(decoder_layers) - 1), lvu_config=config)
     model._get_initial_cache_position = _get_initial_cache_position.__get__(model)
     
     return model
@@ -211,16 +204,28 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     
     start = time.time()
     whole_inputs = processor(
-        text=[text],
+        text=text,
         images=image_inputs,
         videos=video_inputs,
         padding=True,
         return_tensors="pt",
         **video_kwargs,
     )
+    whole_inputs = whole_inputs.to(model.device)
     end = time.time()
     print(f"Preprocessing time for video: {end - start:.2f}s")
     n_video_tokens = (whole_inputs['input_ids'] == model.config.video_token_id).sum().item()
+    last_video_token_id_idx = (whole_inputs['input_ids'] == model.config.video_token_id).nonzero(as_tuple=True)[1][-1].item()
+    video_input_ids = whole_inputs['input_ids'][:, :last_video_token_id_idx + 1]
+    video_attention_mask = whole_inputs['attention_mask'][:, :last_video_token_id_idx + 1]
+    position_ids, rope_deltas = model.get_rope_index(
+        video_input_ids,
+        whole_inputs.get('image_grid_thw', None),
+        whole_inputs.get('video_grid_thw', None),
+        whole_inputs.get('second_per_grid_ts', None),
+        video_attention_mask,
+    )
+    model.rope_deltas = rope_deltas
     
     assert len(video_inputs) <= 1, "Only one video is supported for now."
     video_group_size = lvu_config.video_group_size
@@ -263,7 +268,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
             "pixel_values_videos": pixel_values_videos_groups_i,
         }
         group_i_inputs = BatchFeature(data=group_i_inputs)
-        if past_len == 0:
+        if i == 0:
             # find the first video token id
             first_video_token_id_idx = (whole_inputs['input_ids'] == model.config.video_token_id).nonzero(as_tuple=True)[1][0].item()
             group_i_inputs['input_ids'] = whole_inputs['input_ids'][:, past_len:past_len + first_video_token_id_idx + video_groups_tokens[i]]
@@ -274,6 +279,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
             group_i_inputs['attention_mask'] = whole_inputs['attention_mask'][:, past_len:past_len + n_video_tokens]
         
         group_i_inputs['cache_position'] = torch.arange(group_i_inputs['input_ids'].shape[1], dtype=torch.int64, device=model.device) + past_len
+        group_i_inputs['position_ids'] = position_ids[:, :, past_len:past_len + group_i_inputs['input_ids'].shape[1]]
         past_len += group_i_inputs['input_ids'].shape[1]
         group_i_inputs = group_i_inputs.to(model.device)
         group_i_inputs['use_cache'] = True
@@ -298,19 +304,25 @@ def chat_lvu_model(self, messages, **generation_kwargs):
                     for i in range(len(outputs.past_key_values)):
                         for j in range(len(outputs.past_key_values[i])):
                             past_key_values[i][j] = torch.cat((past_key_values[i][j], outputs.past_key_values[i][j]), dim=2)
+        # print(f"past_key_values shape: {past_key_values[0][0].shape}")
 
     assert past_len < whole_inputs['input_ids'].shape[1], "The past length should be less than the final input length."
     final_inputs = {
         "input_ids": whole_inputs['input_ids'][:, past_len:],
         "attention_mask": whole_inputs['attention_mask'][:, past_len:],
     }
-    final_inputs['cache_position'] = torch.arange(whole_inputs.input_ids.shape[1], dtype=torch.int64, device=model.device) + past_len
-    final_inputs = whole_inputs.to(model.device)
+    final_inputs = BatchFeature(data=final_inputs)
+    final_inputs['cache_position'] = torch.arange(final_inputs.input_ids.shape[1], dtype=torch.int64, device=model.device) + past_len
+    final_inputs = final_inputs.to(model.device)
     final_inputs['past_key_values'] = past_key_values
+    
+    cache_enable = lvu_config.enable
+    lvu_config.enable = lvu_config.do_top_k_for_query # determine whether to do topk or not
     generated_ids = model.generate(**final_inputs, **generation_kwargs)
-        
+    lvu_config.enable = cache_enable
+    
     generated_ids_trimmed = [
-        out_ids[len(in_ids) :] for in_ids, out_ids in zip(whole_inputs.input_ids, generated_ids)
+        out_ids[len(in_ids) :] for in_ids, out_ids in zip(final_inputs.input_ids, generated_ids)
     ]
     output_text = processor.batch_decode(
         generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False

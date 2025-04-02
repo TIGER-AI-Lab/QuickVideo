@@ -105,6 +105,50 @@ def lvu_qwen25_vl_decoder_layer_forward(
 
     return outputs
 
+import qwen_vl_utils.vision_process
+from qwen_vl_utils.vision_process import *
+import sys
+def smart_nframes(
+    ele: dict,
+    total_frames: int,
+    video_fps: int | float,
+) -> int:
+    """calculate the number of frames for video used for model inputs.
+
+    Args:
+        ele (dict): a dict contains the configuration of video.
+            support either `fps` or `nframes`:
+                - nframes: the number of frames to extract for model inputs.
+                - fps: the fps to extract frames for model inputs.
+                    - min_frames: the minimum number of frames of the video, only used when fps is provided.
+                    - max_frames: the maximum number of frames of the video, only used when fps is provided.
+        total_frames (int): the original total number of frames of the video.
+        video_fps (int | float): the original fps of the video.
+
+    Raises:
+        ValueError: nframes should in interval [FRAME_FACTOR, total_frames].
+
+    Returns:
+        int: the number of frames for video used for model inputs.
+    """
+    assert not ("fps" in ele and "nframes" in ele), "Only accept either `fps` or `nframes`"
+    if "nframes" in ele:
+        nframes = round_by_factor(ele["nframes"], FRAME_FACTOR)
+        nframes = min(max(nframes, min_frames), total_frames) # add this line for safety
+    else:
+        fps = ele.get("fps", FPS)
+        min_frames = ceil_by_factor(ele.get("min_frames", FPS_MIN_FRAMES), FRAME_FACTOR)
+        max_frames = floor_by_factor(ele.get("max_frames", min(FPS_MAX_FRAMES, total_frames)), FRAME_FACTOR)
+        nframes = total_frames / video_fps * fps
+        if nframes > total_frames:
+            logger.warning(f"smart_nframes: nframes[{nframes}] > total_frames[{total_frames}]")
+        nframes = min(min(max(nframes, min_frames), max_frames), total_frames)
+        nframes = floor_by_factor(nframes, FRAME_FACTOR)
+    if not (FRAME_FACTOR <= nframes and nframes <= total_frames):
+        raise ValueError(f"nframes should in interval [{FRAME_FACTOR}, {total_frames}], but got {nframes}.")
+    return nframes
+sys.modules["qwen_vl_utils.vision_process"].smart_nframes = smart_nframes
+
 def _get_initial_cache_position(self, input_ids, model_kwargs):
     if "cache_position" in model_kwargs:
         return model_kwargs

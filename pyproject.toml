@@ -10,6 +10,7 @@ dependencies = [
     "decord>=0.6.0",
     "fire>=0.7.0",
     "pillow>=11.1.0",
+    "qwen-vl-utils>=0.0.10",
     "sentencepiece>=0.2.0",
     "torch>=2.6.0",
     "torchvision>=0.21.0",

@@ -195,10 +195,13 @@ def post_process_kv_cache(
     lvu_config = lvu_layer_config.lvu_config
     
     top_k = lvu_config.top_k
+    top_p = lvu_config.top_p
     predict_type = lvu_config.top_k_predict_type
     layer_idx = lvu_layer_config.layer_idx
     prune_for_next_layer = lvu_layer_config.prune_for_next_layer
     q_len = hidden_states.shape[1]
+    if top_p is not None and top_p >= 0:
+        top_k = min((top_k or q_len), int(q_len * top_p))
     
     if not lvu_config.enable or not top_k or top_k <= 0 or q_len <= top_k or \
         (isinstance(lvu_config.top_k_starting_layer, int) and lvu_config.top_k_starting_layer > 0 and lvu_config.layer_idx < lvu_config.top_k_starting_layer):
@@ -215,12 +218,12 @@ def post_process_kv_cache(
     assert bz == 1, f"Only support batch size 1 for now, but got {bz}"
     
     # only process the current new k
-    old_k_shape = keys.shape
     attn_weights = attn_weights[:, :, -q_len:] if attn_weights is not None else None
     past_keys = keys[:, :, :-q_len]
     past_values = values[:, :, :-q_len]
     keys = keys[:, :, -q_len:]
     values = values[:, :, -q_len:]
+    old_k_shape = keys.shape
     
     top_k_select_mask = get_top_k_mask_to_predict(attn_weights, keys, values, hidden_states, top_k=top_k, predict_type=predict_type)
     
@@ -323,6 +326,6 @@ def post_process_kv_cache(
         else:
             raise ValueError(f"Unknown position_embeddings type: {type(position_embeddings)}")
         
-    # print(f"Reduced keys and values from {old_k_shape} to {keys.shape}")
+    # print(f"Reduced keys and values from {old_k_shape} to {top_k_keys.shape}")
     
     return hidden_states, attention_mask, position_ids, cache_position, position_embeddings, present_key_value

@@ -6,6 +6,7 @@ class LVUConfig:
     model_type: str = "qwen25_vl"
     top_k_predict_type: str = "key_norms_small"
     top_k: int = None
+    top_p: float = None
     top_k_starting_layer: int = None
     do_top_k_for_query: bool = False
     adaptive_local_attention: bool = True

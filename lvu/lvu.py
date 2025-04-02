@@ -61,6 +61,7 @@ if __name__ == "__main__":
         top_k_predict_type="key_norms_small",
         video_group_size=16,
         top_k=None,
+        top_p=0.5,
         prefill_prune_starting_layer=None,
         adaptive_local_attention=True,
         num_frames=512,

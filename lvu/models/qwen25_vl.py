@@ -73,7 +73,7 @@ def lvu_qwen25_vl_decoder_layer_forward(
         cache_position=cache_position,
         position_embeddings=position_embeddings,
     )
-    hidden_states = residual + hidden_states
+    hidden_states = residual.to(hidden_states.device) + hidden_states
     hidden_states, attention_mask, position_ids, cache_position, position_embeddings, present_key_value = post_process_kv_cache(
         hidden_states,
         attention_mask,
@@ -206,7 +206,13 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     start = time.time()
     cache_dir = lvu_config.cache_dir or "~/.cache/video_cache/qwen25_vl"
     vision_info = extract_vision_info(messages)
-    cache_key = hashlib.md5(str(vision_info).encode()).hexdigest()
+    assert len(vision_info) == 1, "Only one video is supported for now."
+    video_path = Path(vision_info[0]["video"])
+    cache_key = video_path.stem
+    for k, v in vision_info[0].items():
+        if k not in ['type', 'video']:
+            cache_key += f"_{k}={v}"
+    # cache_key = video_path.stem + "_" + hashlib.md5(str(vision_info).encode()).hexdigest()
     cache_dir = Path(cache_dir).expanduser()
     cache_file = cache_dir / f"{cache_key}.pt"
     cache_dir.mkdir(parents=True, exist_ok=True)

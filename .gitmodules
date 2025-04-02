@@ -1,0 +1,4 @@
+[submodule "lmms-eval"]
+	path = lmms-eval
+	url = https://github.com/jdf-prog/lmms-eval.git
+	branch = dev/lvu

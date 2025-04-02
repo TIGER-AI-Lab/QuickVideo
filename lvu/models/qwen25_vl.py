@@ -134,7 +134,7 @@ def smart_nframes(
     assert not ("fps" in ele and "nframes" in ele), "Only accept either `fps` or `nframes`"
     if "nframes" in ele:
         nframes = round_by_factor(ele["nframes"], FRAME_FACTOR)
-        nframes = min(max(nframes, min_frames), total_frames) # add this line for safety
+        nframes = min(nframes, total_frames) # add this line for safety
     else:
         fps = ele.get("fps", FPS)
         min_frames = ceil_by_factor(ele.get("min_frames", FPS_MIN_FRAMES), FRAME_FACTOR)

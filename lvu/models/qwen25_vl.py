@@ -2,12 +2,14 @@ import torch
 import numpy as np
 import dataclasses
 import time
+import hashlib
+from pathlib import Path
 from tqdm import tqdm
 from typing import Optional, Tuple
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLModel
 from transformers.feature_extraction_utils import BatchFeature
 from transformers.cache_utils import Cache
-from qwen_vl_utils import process_vision_info
+from qwen_vl_utils import process_vision_info, extract_vision_info
 from ..utils import post_process_kv_cache
 from ..lvu_config import LVUConfig, LVULayerConfig
 
@@ -202,7 +204,32 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     )
     
     start = time.time()
-    image_inputs, video_inputs, video_kwargs = process_vision_info(messages, return_video_kwargs=True)
+    cache_dir = lvu_config.cache_dir or "~/.cache/video_cache/qwen25_vl"
+    vision_info = extract_vision_info(messages)
+    cache_key = hashlib.md5(str(vision_info).encode()).hexdigest()
+    cache_dir = Path(cache_dir).expanduser()
+    cache_file = cache_dir / f"{cache_key}.pt"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    if not cache_file.exists():
+        print(f"Cache file {cache_file} not found. Processing video frames...")
+        image_inputs, video_inputs, video_kwargs = process_vision_info(messages, return_video_kwargs=True)
+        # save to cache
+        torch.save({
+            "image_inputs": image_inputs,
+            "video_inputs": video_inputs,
+            "video_kwargs": video_kwargs,
+        }, cache_file)
+        cache_file_size_gb = cache_file.stat().st_size / (1024 ** 3)
+        print(f"Saved video cache to {cache_file} ({cache_file_size_gb:.2f} GB)")
+    else:
+        print(f"Cache file {cache_file} found. Loading video frames...")
+        results = torch.load(cache_file)
+        image_inputs = results["image_inputs"]
+        video_inputs = results["video_inputs"]
+        video_kwargs = results["video_kwargs"]
+    end = time.time()
+    print(f"Preprocessing time for video: {end - start:.2f}s")
+    
     whole_inputs = processor(
         text=text,
         images=image_inputs,
@@ -212,8 +239,6 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         **video_kwargs,
     )
     whole_inputs = whole_inputs.to(model.device)
-    end = time.time()
-    print(f"Preprocessing time for video: {end - start:.2f}s")
     n_video_tokens = (whole_inputs['input_ids'] == model.config.video_token_id).sum().item()
     last_video_token_id_idx = (whole_inputs['input_ids'] == model.config.video_token_id).nonzero(as_tuple=True)[1][-1].item()
     video_input_ids = whole_inputs['input_ids'][:, :last_video_token_id_idx + 1]

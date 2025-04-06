@@ -194,10 +194,11 @@ def init_lvu_model(model, config: LVUConfig):
     else:
         raise ValueError("Model must be either Qwen2_5_VLForConditionalGeneration or Qwen2_5_VLModel")
     
+    total_layers= len(decoder_layers)
     for i, layer in enumerate(decoder_layers):
         # Set the forward function for each decoder layer and filling the parameters in the config
         layer.forward = lvu_qwen25_vl_decoder_layer_forward.__get__(layer)
-        layer.lvu_layer_config = LVULayerConfig(layer_idx=layer.self_attn.layer_idx, is_last_layer=(i == len(decoder_layers) - 1), lvu_config=config)
+        layer.lvu_layer_config = LVULayerConfig(layer_idx=layer.self_attn.layer_idx, total_layers=total_layers, lvu_config=config)
     model._get_initial_cache_position = _get_initial_cache_position.__get__(model)
     
     return model
@@ -262,16 +263,16 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     cache_file = cache_dir / f"{cache_key}.pt"
     cache_dir.mkdir(parents=True, exist_ok=True)
     if not cache_file.exists():
-        print(f"Cache file {cache_file} not found. Processing video frames...")
         image_inputs, video_inputs, video_kwargs = process_vision_info(messages, return_video_kwargs=True)
         # save to cache
-        torch.save({
-            "image_inputs": image_inputs,
-            "video_inputs": video_inputs,
-            "video_kwargs": video_kwargs,
-        }, cache_file)
-        cache_file_size_gb = cache_file.stat().st_size / (1024 ** 3)
-        print(f"Saved video cache to {cache_file} ({cache_file_size_gb:.2f} GB)")
+        if lvu_config.save_video_cache:
+            torch.save({
+                "image_inputs": image_inputs,
+                "video_inputs": video_inputs,
+                "video_kwargs": video_kwargs,
+            }, cache_file)
+            cache_file_size_gb = cache_file.stat().st_size / (1024 ** 3)
+            print(f"Saved video cache to {cache_file} ({cache_file_size_gb:.2f} GB)")
     else:
         print(f"Cache file {cache_file} found. Loading video frames...")
         results = torch.load(cache_file)

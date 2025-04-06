@@ -202,6 +202,15 @@ def post_process_kv_cache(
     q_len = hidden_states.shape[1]
     if top_p is not None and top_p >= 0:
         top_k = min((top_k or q_len), int(q_len * top_p))
+        
+    if not lvu_config.top_k_decay_type:
+        top_k = top_k
+    elif lvu_config.top_k_decay_type == "linear":
+        top_k = top_k - int(top_k * (layer_idx / lvu_layer_config.total_layers))
+    elif lvu_config.top_k_decay_type == "exponential":
+        top_k = int(top_k * (lvu_config.top_k_decay_factor ** layer_idx))
+    else:
+        raise ValueError(f"Unknown top_k_decay_type: {lvu_config.top_k_decay_type}")
     
     if not lvu_config.enable or not top_k or top_k <= 0 or q_len <= top_k or \
         (isinstance(lvu_config.top_k_starting_layer, int) and lvu_config.top_k_starting_layer > 0 and lvu_config.layer_idx < lvu_config.top_k_starting_layer):
@@ -326,6 +335,6 @@ def post_process_kv_cache(
         else:
             raise ValueError(f"Unknown position_embeddings type: {type(position_embeddings)}")
         
-    # print(f"Reduced keys and values from {old_k_shape} to {top_k_keys.shape}")
+    # print(f"Reduced keys and values from {old_k_shape} to {top_k_keys.shape} for layer {layer_idx}")
     
     return hidden_states, attention_mask, position_ids, cache_position, position_embeddings, present_key_value

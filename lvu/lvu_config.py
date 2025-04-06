@@ -18,17 +18,27 @@ class LVUConfig:
     extra_kwargs: dict = None
     enable: bool = True
     cache_dir: str = None
+    save_video_cache: bool = False
+    top_k_decay_factor: float = None
+    top_k_decay_type: str = None
+    
+    def __post_init__(self):
+        # check and auto set default values
+        if self.top_k_decay_type == "linear" and self.top_k_decay_factor is None:
+            print(f"Warning: top_k_decay_type is set to {self.top_k_decay_type} but top_k_decay_factor is None. Setting it to 0.5.")
+            self.top_k_decay_factor = 0.5
+            
     
 @dataclass
 class LVULayerConfig:
     layer_idx: int
-    is_last_layer: bool
+    total_layers: int
     lvu_config: LVUConfig
+    is_last_layer: bool = False
     prune_for_next_layer: bool = False
-    def __init__(self, layer_idx=None, is_last_layer=None, lvu_config=None):
-        self.layer_idx = layer_idx
-        self.is_last_layer = is_last_layer
-        self.lvu_config = lvu_config
+    
+    def __post_init__(self):
+        self.is_last_layer = (self.layer_idx == self.total_layers - 1)
         if self.lvu_config is None:
             self.lvu_config = LVUConfig()
         if self.layer_idx is None:

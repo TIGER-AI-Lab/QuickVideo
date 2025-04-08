@@ -55,28 +55,66 @@ class LVU:
         return output
     
 if __name__ == "__main__":
+    # config = LVUConfig(
+    #     model_name_or_path="Qwen/Qwen2.5-VL-7B-Instruct", 
+    #     model_type="qwen25_vl",
+    #     top_k_predict_type="key_weighted_vector_norms",
+    #     video_group_size=16,
+    #     top_k=None,
+    #     top_p=0.75,
+    #     prefill_prune_starting_layer=None,
+    #     adaptive_local_attention=True,
+    #     # num_frames=128,
+    #     fps=2,
+    #     use_tqdm=True,
+    #     top_k_decay_type="linear",
+    #     top_k_decay_factor=0.33,
+    # )
+    
     config = LVUConfig(
         model_name_or_path="Qwen/Qwen2.5-VL-7B-Instruct", 
         model_type="qwen25_vl",
+        # top_k_predict_type="query_attention_weights",
+        # top_k_predict_type="query_attention_weights_by_value_norm",
         top_k_predict_type="key_norms_small",
         video_group_size=16,
         top_k=None,
-        top_p=0.75,
+        top_p=0.2,
         prefill_prune_starting_layer=None,
         adaptive_local_attention=True,
-        num_frames=128,
+        # num_frames=128,
+        fps=2,
         use_tqdm=True,
-        top_k_decay_type="linear",
-        top_k_decay_factor=0.33,
+        # top_k_decay_type="linear",
+        # top_k_decay_factor=0.33,
     )
     lvu = LVU(config)
     
-    question = "Describe this video."
-    video_path = "/home/dongfu/data/.cache/huggingface/videomme/data/ZXoaMa6jlO4.mp4"
-    generation_kwargs = {
-        "max_new_tokens": 512,
-        "do_sample": False,
-        "top_p": 1.0,
-    }
-    output = lvu.generate(question, video_path, **generation_kwargs)
-    print(output)
+    # question = "Describe this video."
+    # video_path = "/home/dongfu/data/.cache/huggingface/videomme/data/ZXoaMa6jlO4.mp4"
+    # generation_kwargs = {
+    #     "max_new_tokens": 512,
+    #     "do_sample": False,
+    #     "top_p": 1.0,
+    # }
+    # output = lvu.generate(question, video_path, **generation_kwargs)
+    # print(output)
+    
+    DEMO_VIDEO = './video-FlexReduc/misc/Q8AZ16uBhr8_resized_fps2_mute.mp4'
+    DEMO_QUESTIONS = [
+        "As depicted in the video, how is the relationship between the rabbit and human?\nOptions:\nA. Hostile.\nB. Friend.\nC. Cooperator.\nD. No one is correct above.\nAnswer with the option's letter from the given choices directly.",
+        "What is the impression of the video?\nOptions:\nA. Sad.\nB. Funny.\nC. Horrible.\nD. Silent.\nAnswer with the option's letter from the given choices directly.",
+        "What is the subject of the video?\nOptions:\nA. Rabbit likes to eat carrots.\nB. How to raise a rabbit.\nC. A rabbit gives people trouble.\nD. A rabbit performs for food.\nAnswer with the option's letter from the given choices directly.",
+    ]
+    EXPECTED_ANSWERS = ['A', 'B', 'C']
+    video_path = DEMO_VIDEO
+    for question, expected_answer in zip(DEMO_QUESTIONS, EXPECTED_ANSWERS):
+        generation_kwargs = {
+            "max_new_tokens": 512,
+            "do_sample": False,
+            "top_p": 1.0,
+        }
+        output = lvu.generate(question, video_path, **generation_kwargs)
+        print(f"Question: {question}")
+        print(f"Expected Answer: {expected_answer}")
+        print(f"Model Output: {output}")

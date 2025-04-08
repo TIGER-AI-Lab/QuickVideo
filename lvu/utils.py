@@ -3,11 +3,12 @@ import random
 import torch.nn.functional as F
 from typing import Tuple, Union
 from .lvu_config import LVUConfig, LVULayerConfig
-from transformers.cache_utils import DynamicCache
+from .lvu_cache import DynamicCache, LVUCache
+
 def get_top_k_mask_to_predict(attn_weights, keys, values, outputs, top_k=100, predict_type="attention_weights"):
     """
     Args:
-        attn_weights: (bz, 1, Q_len, K_len)
+        attn_weights: (bz, 1, Q_len, K_len) or (bz, K_len)
         keys: (bz, num_heads, Q_len, C)
         values: (bz, num_heads, K_len, C)
         outputs: (bz, Q_len, C)
@@ -20,7 +21,15 @@ def get_top_k_mask_to_predict(attn_weights, keys, values, outputs, top_k=100, pr
     bz, _, k_len, _ = values.shape
     bz_top_k_idxs = []
     for bz_i in range(bz):
-        attn_weights_i = attn_weights[bz_i].mean(0) if attn_weights is not None else None
+        if attn_weights is not None:
+            if attn_weights.dim() == 4:
+                attn_weights_i = attn_weights[bz_i].mean(0)[:, -k_len:] # (K_len, K_len)
+            elif attn_weights.dim() == 2:
+                attn_weights_i = attn_weights[bz_i] # (k_len)
+            else:
+                raise ValueError(f"Unknown attn_weights shape: {attn_weights.shape}")
+        else:
+            attn_weights_i = None
         keys_i = keys[bz_i]
         values_i = values[bz_i]
         outputs_i = outputs[bz_i]
@@ -36,6 +45,15 @@ def get_top_k_mask_to_predict(attn_weights, keys, values, outputs, top_k=100, pr
                 weights = attn_weights_i[i:, i]
                 mean_weights.append(weights.mean().item())
             top_k_idxs = sorted(range(len(mean_weights)), key=lambda x: mean_weights[x], reverse=True)[:top_k]
+        elif predict_type == "query_attention_weights":
+            assert attn_weights_i is not None and attn_weights_i.dim() == 1, f"attn_weights_i should be 1D, but got {attn_weights_i.shape}"
+            top_k_idxs = attn_weights_i.argsort(descending=True)[:top_k].tolist()
+        elif predict_type == "query_attention_weights_by_value_norm":
+            assert attn_weights_i is not None and attn_weights_i.dim() == 1, f"attn_weights should be 1D, but got {attn_weights_i.shape}"
+            cur_layer_value_vectors = values_i.transpose(0, 1).flatten(1, 2)
+            vector_norms = cur_layer_value_vectors.norm(2, dim=-1)
+            weighted_vector_norms = attn_weights_i * vector_norms
+            top_k_idxs = weighted_vector_norms.argsort(descending=True)[:top_k].tolist()
         elif predict_type == "attention_weights_sum":
             sum_weights = []
             for i in range(len(attn_weights_i)):
@@ -137,6 +155,15 @@ def get_top_k_mask_to_predict(attn_weights, keys, values, outputs, top_k=100, pr
             cosine_similarity_matrix = torch.matmul(pivot_key_vectors, other_key_vectors.transpose(0, 1))
             top_k_idxs.extend([other_top_k_idxs[j] for j in cosine_similarity_matrix.mean(dim=0).argsort()[:top_k - num_pivot_tokens]])
             top_k_idxs = list(set(top_k_idxs))
+        elif predict_type == "key_weighted_vector_norms":
+            cur_layer_key_vectors = keys_i.transpose(0, 1).flatten(1, 2)
+            key_norms = cur_layer_key_vectors.norm(2, dim=-1)
+            # softmax the key norms
+            key_norms = F.softmax(key_norms, dim=-1)
+            cur_layer_value_vectors = values_i.transpose(0, 1).flatten(1, 2)
+            value_norms = cur_layer_value_vectors.norm(2, dim=-1)
+            weighted_norms = key_norms * value_norms
+            top_k_idxs = weighted_norms.argsort(descending=True)[:top_k].tolist()
         elif predict_type == "output_norms":
             outputs_norms = outputs_i.norm(2, dim=-1)
             top_k_idxs = outputs_norms.argsort(descending=True)[:top_k].tolist()
@@ -167,7 +194,7 @@ def post_process_kv_cache(
     cache_position: torch.Tensor,
     position_embeddings: torch.Tensor,
     attn_weights: torch.Tensor,
-    present_key_value: Union[Tuple[torch.Tensor, torch.Tensor], DynamicCache],
+    present_key_value: Union[Tuple[torch.Tensor, torch.Tensor], DynamicCache, LVUCache],
     lvu_layer_config: LVULayerConfig,
 ):
     """
@@ -200,6 +227,10 @@ def post_process_kv_cache(
     layer_idx = lvu_layer_config.layer_idx
     prune_for_next_layer = lvu_layer_config.prune_for_next_layer
     q_len = hidden_states.shape[1]
+    if isinstance(present_key_value, LVUCache) and present_key_value.prompt_length > 0:
+        q_len -= present_key_value.prompt_length
+        attn_weights = present_key_value.accum_attn_scores[layer_idx][-1]
+        
     if top_p is not None and top_p >= 0:
         top_k = min((top_k or q_len), int(q_len * top_p))
         
@@ -211,7 +242,6 @@ def post_process_kv_cache(
         top_k = int(top_k * (lvu_config.top_k_decay_factor ** layer_idx))
     else:
         raise ValueError(f"Unknown top_k_decay_type: {lvu_config.top_k_decay_type}")
-    
     if not lvu_config.enable or not top_k or top_k <= 0 or q_len <= top_k or \
         (isinstance(lvu_config.top_k_starting_layer, int) and lvu_config.top_k_starting_layer > 0 and lvu_config.layer_idx < lvu_config.top_k_starting_layer):
         # no need to prune
@@ -223,18 +253,16 @@ def post_process_kv_cache(
         keys, values = present_key_value
     else:
         raise ValueError(f"Unknown present_key_value type: {type(present_key_value)}")
-    bz, num_heads, k_len, _ = keys.shape
+    bz = keys.shape[0]
     assert bz == 1, f"Only support batch size 1 for now, but got {bz}"
     
     # only process the current new k
-    attn_weights = attn_weights[:, :, -q_len:] if attn_weights is not None else None
     past_keys = keys[:, :, :-q_len]
     past_values = values[:, :, :-q_len]
     keys = keys[:, :, -q_len:]
     values = values[:, :, -q_len:]
-    old_k_shape = keys.shape
     
-    top_k_select_mask = get_top_k_mask_to_predict(attn_weights, keys, values, hidden_states, top_k=top_k, predict_type=predict_type)
+    top_k_select_mask = get_top_k_mask_to_predict(attn_weights, keys, values, hidden_states[:, :q_len], top_k=top_k, predict_type=predict_type)
     
     top_k_keys_list = []
     top_k_values_list = []

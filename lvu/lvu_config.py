@@ -21,14 +21,16 @@ class LVUConfig:
     save_video_cache: bool = False
     top_k_decay_factor: float = None
     top_k_decay_type: str = None
+    query_based: bool = False
     
     def __post_init__(self):
         # check and auto set default values
         if self.top_k_decay_type == "linear" and self.top_k_decay_factor is None:
             print(f"Warning: top_k_decay_type is set to {self.top_k_decay_type} but top_k_decay_factor is None. Setting it to 0.5.")
             self.top_k_decay_factor = 0.5
-            
-    
+        if "query" in self.top_k_predict_type:
+            # this is a query based predict type
+            self.query_based = True
 @dataclass
 class LVULayerConfig:
     layer_idx: int

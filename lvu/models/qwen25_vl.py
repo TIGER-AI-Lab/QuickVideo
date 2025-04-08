@@ -12,6 +12,105 @@ from transformers.cache_utils import Cache
 from qwen_vl_utils import process_vision_info, extract_vision_info
 from ..utils import post_process_kv_cache
 from ..lvu_config import LVUConfig, LVULayerConfig
+from ..lvu_cache import LVUCache
+from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
+    apply_multimodal_rotary_pos_emb,
+    repeat_kv,
+    _flash_attention_forward,
+)
+
+def lvu_qwen25_vl_flash_attention_2_forward(
+    self,
+    hidden_states: torch.Tensor,
+    attention_mask: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.LongTensor] = None,
+    past_key_value: Optional[Cache] = None,
+    output_attentions: bool = False,
+    use_cache: bool = False,
+    cache_position: Optional[torch.LongTensor] = None,
+    position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+    ):
+    bsz, q_len, _ = hidden_states.size()
+
+    query_states = self.q_proj(hidden_states)
+    key_states = self.k_proj(hidden_states)
+    value_states = self.v_proj(hidden_states)
+
+    query_states = query_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+    key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+    value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+
+    # Because the input can be padded, the absolute sequence length depends on the max position id.
+    cos, sin = position_embeddings
+    query_states, key_states = apply_multimodal_rotary_pos_emb(
+        query_states, key_states, cos, sin, self.rope_scaling["mrope_section"]
+    )
+
+    if past_key_value is not None:
+        cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position, "query_states": query_states}  # Specific to RoPE models
+        key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+
+    # repeat k/v heads if n_kv_heads < n_heads
+    key_states = repeat_kv(key_states, self.num_key_value_groups)
+    value_states = repeat_kv(value_states, self.num_key_value_groups)
+    dropout_rate = 0.0 if not self.training else self.attention_dropout
+
+    # In PEFT, usually we cast the layer norms in float32 for training stability reasons
+    # therefore the input hidden states gets silently casted in float32. Hence, we need
+    # cast them back in float16 just to be sure everything works as expected.
+    input_dtype = query_states.dtype
+    if input_dtype == torch.float32:
+        if torch.is_autocast_enabled():
+            target_dtype = torch.get_autocast_gpu_dtype()
+        # Handle the case where the model is quantized
+        elif hasattr(self.config, "_pre_quantization_dtype"):
+            target_dtype = self.config._pre_quantization_dtype
+        else:
+            target_dtype = self.q_proj.weight.dtype
+
+        logger.warning_once(
+            f"The input hidden states seems to be silently casted in float32, this might be related to"
+            f" the fact you have upcasted embedding or layer norm layers in float32. We will cast back the input in"
+            f" {target_dtype}."
+        )
+
+        query_states = query_states.to(target_dtype)
+        key_states = key_states.to(target_dtype)
+        value_states = value_states.to(target_dtype)
+
+    # Reashape to the expected shape for Flash Attention
+    query_states = query_states.transpose(1, 2)
+    key_states = key_states.transpose(1, 2)
+    value_states = value_states.transpose(1, 2)
+
+    if (
+        self.config.use_sliding_window
+        and getattr(self.config, "sliding_window", None) is not None
+        and self.layer_idx >= self.config.max_window_layers
+    ):
+        sliding_window = self.config.sliding_window
+    else:
+        sliding_window = None
+
+    attn_output = _flash_attention_forward(
+        query_states,
+        key_states,
+        value_states,
+        attention_mask,
+        q_len,
+        dropout=dropout_rate,
+        sliding_window=sliding_window,
+        is_causal=self.is_causal,
+        use_top_left_mask=self._flash_attn_uses_top_left_mask,
+    )
+
+    attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
+    attn_output = self.o_proj(attn_output)
+
+    if not output_attentions:
+        attn_weights = None
+
+    return attn_output, attn_weights, past_key_value
 
 def lvu_qwen25_vl_decoder_layer_forward(
     self,
@@ -108,6 +207,7 @@ def lvu_qwen25_vl_decoder_layer_forward(
 import qwen_vl_utils.vision_process
 from qwen_vl_utils.vision_process import *
 import sys
+FPS_MAX_FRAMES = 1024 # 768 = 256 * 3
 def smart_nframes(
     ele: dict,
     total_frames: int,
@@ -198,6 +298,7 @@ def init_lvu_model(model, config: LVUConfig):
     for i, layer in enumerate(decoder_layers):
         # Set the forward function for each decoder layer and filling the parameters in the config
         layer.forward = lvu_qwen25_vl_decoder_layer_forward.__get__(layer)
+        layer.self_attn.forward = lvu_qwen25_vl_flash_attention_2_forward.__get__(layer.self_attn)
         layer.lvu_layer_config = LVULayerConfig(layer_idx=layer.self_attn.layer_idx, total_layers=total_layers, lvu_config=config)
     model._get_initial_cache_position = _get_initial_cache_position.__get__(model)
     
@@ -292,15 +393,15 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     )
     whole_inputs = whole_inputs.to(model.device)
     n_video_tokens = (whole_inputs['input_ids'] == model.config.video_token_id).sum().item()
-    last_video_token_id_idx = (whole_inputs['input_ids'] == model.config.video_token_id).nonzero(as_tuple=True)[1][-1].item()
-    video_input_ids = whole_inputs['input_ids'][:, :last_video_token_id_idx + 1]
-    video_attention_mask = whole_inputs['attention_mask'][:, :last_video_token_id_idx + 1]
+    video_token_idxs = (whole_inputs['input_ids'] == model.config.video_token_id).nonzero(as_tuple=True)[1]
+    first_video_token_id_idx = video_token_idxs[0].item()
+    last_video_token_id_idx = video_token_idxs[-1].item()
     position_ids, rope_deltas = model.get_rope_index(
-        video_input_ids,
+        whole_inputs['input_ids'],
         whole_inputs.get('image_grid_thw', None),
         whole_inputs.get('video_grid_thw', None),
         whole_inputs.get('second_per_grid_ts', None),
-        video_attention_mask,
+        whole_inputs['attention_mask'],
     )
     model.rope_deltas = rope_deltas
     
@@ -334,9 +435,19 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     # print("Video groups grid thw: ", video_groups_grid_thw)
     # print("Pixel values videos groups: ", [group.shape for group in pixel_values_videos_groups])
     
-    # start to process the video groups
-    past_key_values = None
+    # preprepare the chunk processing
+    past_key_values = LVUCache()
     past_len = 0
+    video_token_idxs = (whole_inputs['input_ids'] == model.config.video_token_id).nonzero(as_tuple=True)[1]
+    first_video_token_id_idx = video_token_idxs[0].item()
+    last_video_token_id_idx = video_token_idxs[-1].item()
+    prompt_input_ids = whole_inputs['input_ids'][:, last_video_token_id_idx + 1:]
+    prompt_attention_mask = whole_inputs['attention_mask'][:, last_video_token_id_idx + 1:]
+    if lvu_config.query_based:
+        past_key_values.set_prompt_length(prompt_input_ids.shape[1])
+    video_groups_tokens[0] += first_video_token_id_idx # add the tokens before the first video group as well
+        
+    # start processing the video groups
     for i, pixel_values_videos_groups_i in tqdm(enumerate(pixel_values_videos_groups), 
         desc="Processing video groups", total=len(pixel_values_videos_groups), disable=not lvu_config.use_tqdm):
         group_i_inputs = {
@@ -345,19 +456,15 @@ def chat_lvu_model(self, messages, **generation_kwargs):
             "pixel_values_videos": pixel_values_videos_groups_i,
         }
         group_i_inputs = BatchFeature(data=group_i_inputs)
-        if i == 0:
-            # find the first video token id
-            first_video_token_id_idx = (whole_inputs['input_ids'] == model.config.video_token_id).nonzero(as_tuple=True)[1][0].item()
-            group_i_inputs['input_ids'] = whole_inputs['input_ids'][:, past_len:past_len + first_video_token_id_idx + video_groups_tokens[i]]
-            group_i_inputs['attention_mask'] = whole_inputs['attention_mask'][:, past_len:past_len + first_video_token_id_idx + video_groups_tokens[i]]
-        else:
-            n_video_tokens = video_groups_tokens[i]
-            group_i_inputs['input_ids'] = whole_inputs['input_ids'][:, past_len:past_len + n_video_tokens]
-            group_i_inputs['attention_mask'] = whole_inputs['attention_mask'][:, past_len:past_len + n_video_tokens]
+        group_i_inputs['input_ids'] = whole_inputs['input_ids'][:, past_len:past_len + video_groups_tokens[i]]
+        group_i_inputs['attention_mask'] = whole_inputs['attention_mask'][:, past_len:past_len + video_groups_tokens[i]]
+        if lvu_config.query_based:
+            group_i_inputs['input_ids'] = torch.cat((group_i_inputs['input_ids'], prompt_input_ids), dim=1)
+            group_i_inputs['attention_mask'] = torch.cat((group_i_inputs['attention_mask'], prompt_attention_mask), dim=1)
         
         group_i_inputs['cache_position'] = torch.arange(group_i_inputs['input_ids'].shape[1], dtype=torch.int64, device=model.device) + past_len
         group_i_inputs['position_ids'] = position_ids[:, :, past_len:past_len + group_i_inputs['input_ids'].shape[1]]
-        past_len += group_i_inputs['input_ids'].shape[1]
+        past_len += video_groups_tokens[i] # only the video group tokens are counted, prompt tokens are not counted
         group_i_inputs = group_i_inputs.to(model.device)
         group_i_inputs['use_cache'] = True
         if lvu_config.adaptive_local_attention:
@@ -382,16 +489,24 @@ def chat_lvu_model(self, messages, **generation_kwargs):
                         for j in range(len(outputs.past_key_values[i])):
                             past_key_values[i][j] = torch.cat((past_key_values[i][j], outputs.past_key_values[i][j]), dim=2)
         # print(f"past_key_values shape: {past_key_values[0][0].shape}")
-
     assert past_len < whole_inputs['input_ids'].shape[1], "The past length should be less than the final input length."
+    if lvu_config.query_based:
+        # reset prompt length as all video groups are processed
+        past_key_values.set_prompt_length(0)
+    # end of processing the video groups
+    
     final_inputs = {
         "input_ids": whole_inputs['input_ids'][:, past_len:],
         "attention_mask": whole_inputs['attention_mask'][:, past_len:],
     }
     final_inputs = BatchFeature(data=final_inputs)
     final_inputs['cache_position'] = torch.arange(final_inputs.input_ids.shape[1], dtype=torch.int64, device=model.device) + past_len
+    final_inputs['position_ids'] = position_ids[:, :, past_len:]
+    assert final_inputs['input_ids'].shape[1] == final_inputs['position_ids'].shape[2], "The input ids and position ids should have the same length, but got {} and {}".format(
+        final_inputs['input_ids'].shape[1], final_inputs['position_ids'].shape[2])
     final_inputs = final_inputs.to(model.device)
     final_inputs['past_key_values'] = past_key_values
+    final_inputs['use_cache'] = True
     
     cache_enable = lvu_config.enable
     lvu_config.enable = lvu_config.do_top_k_for_query # determine whether to do topk or not

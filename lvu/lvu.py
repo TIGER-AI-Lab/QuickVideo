@@ -1,8 +1,8 @@
 import torch
 from dataclasses import dataclass
 from transformers import AutoProcessor, AutoModelForImageTextToText
-from .models import lvu_init_model_map, lvu_run_model_map, lvu_chat_model_map
-from .lvu_config import LVUConfig
+from lvu.models import lvu_init_model_map, lvu_run_model_map, lvu_chat_model_map
+from lvu.lvu_config import LVUConfig
 
 class LVU:
     def __init__(self, config, model=None, processor=None, model_init_kwargs={}):

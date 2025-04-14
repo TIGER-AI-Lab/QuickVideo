@@ -1,2 +1,2 @@
-from .lvu import LVU
-from .lvu_config import LVUConfig
+from lvu.lvu import LVU
+from lvu.lvu_config import LVUConfig

@@ -2,8 +2,8 @@ import torch
 import random
 import torch.nn.functional as F
 from typing import Tuple, Union
-from .lvu_config import LVUConfig, LVULayerConfig
-from .lvu_cache import DynamicCache, LVUCache
+from lvu.lvu_config import LVUConfig, LVULayerConfig
+from lvu.lvu_cache import DynamicCache, LVUCache
 
 def get_top_k_mask_to_predict(attn_weights, keys, values, outputs, top_k=100, predict_type="attention_weights"):
     """

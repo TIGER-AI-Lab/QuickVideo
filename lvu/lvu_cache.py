@@ -8,7 +8,7 @@ from transformers.cache_utils import (
     Any,
     Tuple,
 )
-from .lvu_config import LVUConfig
+from lvu.lvu_config import LVUConfig
 
 def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     """

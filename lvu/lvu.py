@@ -73,7 +73,7 @@ if __name__ == "__main__":
     
     config = LVUConfig(
         model_name_or_path="Qwen/Qwen2.5-VL-7B-Instruct", 
-        model_type="qwen25_vl",
+        model_type="qwen25_lvu",
         # top_k_predict_type="query_attention_weights",
         # top_k_predict_type="query_attention_weights_by_value_norm",
         top_k_predict_type="key_norms_small",
@@ -100,7 +100,7 @@ if __name__ == "__main__":
     # output = lvu.generate(question, video_path, **generation_kwargs)
     # print(output)
     
-    DEMO_VIDEO = './video-FlexReduc/misc/Q8AZ16uBhr8_resized_fps2_mute.mp4'
+    DEMO_VIDEO = '/scratch/b3schnei/data/video/20min.mp4'
     DEMO_QUESTIONS = [
         "As depicted in the video, how is the relationship between the rabbit and human?\nOptions:\nA. Hostile.\nB. Friend.\nC. Cooperator.\nD. No one is correct above.\nAnswer with the option's letter from the given choices directly.",
         "What is the impression of the video?\nOptions:\nA. Sad.\nB. Funny.\nC. Horrible.\nD. Silent.\nAnswer with the option's letter from the given choices directly.",

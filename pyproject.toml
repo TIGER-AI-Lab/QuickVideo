@@ -15,5 +15,6 @@ dependencies = [
     "torch>=2.6.0",
     "torchvision>=0.21.0",
     "transformers>=4.50.0",
-    "deepcodec==0.0.4",
+    "deepcodec==0.0.5",
+    "setuptools",
 ]

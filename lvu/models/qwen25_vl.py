@@ -10,9 +10,9 @@ from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLModel
 from transformers.feature_extraction_utils import BatchFeature
 from transformers.cache_utils import Cache
 from qwen_vl_utils import process_vision_info, extract_vision_info
-from lvu.utils import post_process_kv_cache
-from lvu.lvu_config import LVUConfig, LVULayerConfig
-from lvu.lvu_cache import LVUCache
+from ..utils import post_process_kv_cache
+from ..lvu_config import LVUConfig, LVULayerConfig
+from ..lvu_cache import LVUCache
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
     apply_multimodal_rotary_pos_emb,
     repeat_kv,

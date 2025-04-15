@@ -207,7 +207,7 @@ def lvu_qwen25_vl_decoder_layer_forward(
 import qwen_vl_utils.vision_process
 from qwen_vl_utils.vision_process import *
 import sys
-FPS_MAX_FRAMES = 1024 # 768 = 256 * 3
+FPS_MAX_FRAMES = 3*3*1024 # 768 = 256 * 3
 def smart_nframes(
     ele: dict,
     total_frames: int,
@@ -248,7 +248,7 @@ def smart_nframes(
     if not (FRAME_FACTOR <= nframes and nframes <= total_frames):
         raise ValueError(f"nframes should in interval [{FRAME_FACTOR}, {total_frames}], but got {nframes}.")
     return nframes
-sys.modules["qwen_vl_utils.vision_process"].smart_nframes = smart_nframes
+#sys.modules["qwen_vl_utils.vision_process"].smart_nframes = smart_nframes
 
 def _get_initial_cache_position(self, input_ids, model_kwargs):
     if "cache_position" in model_kwargs:

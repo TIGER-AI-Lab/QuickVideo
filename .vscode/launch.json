@@ -8,9 +8,22 @@
             "module": "lvu.lvu",
             "console": "integratedTerminal",
             "env": {
-                "CUDA_VISIBLE_DEVICES": "0"
+                "CUDA_VISIBLE_DEVICES": "0",
+                "DEEPCODEC_CORES": "8"
             },
             "justMyCode": false
-        }
+        },
+        {
+            "name": "Debug_2",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0",
+                "DEEPCODEC_CORES": "8"
+            },
+            "justMyCode": false
+        },
     ]
 }

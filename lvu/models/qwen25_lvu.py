@@ -214,6 +214,7 @@ import sys
 
 def is_deepcodec_available() -> bool:
     import importlib.util
+    #return False
     return importlib.util.find_spec("deepcodec") is not None
 
 @lru_cache(maxsize=1)
@@ -246,16 +247,20 @@ def _read_video_deepcodec(
     from deepcodec import VideoReader as DCVideoReader
     video_path = ele["video"]
     st = time.time()
-    vr = DCVideoReader(video_path, num_threads=8)
+    num_cores = int(os.environ.get("DEEPCODEC_CORES", "4"))
+    vr = DCVideoReader(video_path, num_threads=num_cores)
     # TODO: support start_pts and end_pts
     if 'video_start' in ele or 'video_end' in ele:
         raise NotImplementedError("not support start_pts and end_pts in decord for now.")
-    total_frames, video_fps = len(vr), vr.get_avg_fps()
-    logger.info(f"decord:  {video_path=}, {total_frames=}, {video_fps=}, time={time.time() - st:.3f}s")
+    total_frames, video_fps = len(vr), vr.get_fps()
+    print(f"deepcodec:  {video_path=}, {total_frames=}, {video_fps=}, time={time.time() - st:.3f}s")
     nframes = smart_nframes(ele, total_frames=total_frames, video_fps=video_fps)
     idx = torch.linspace(0, total_frames - 1, nframes).round().long().tolist()
-    video = vr.get_batch(idx).asnumpy()
-    video = torch.tensor(video).permute(0, 3, 1, 2)  # Convert to TCHW format
+    video = torch.from_numpy(vr.get_batch(idx))
+    print(f"deepcodec:  {video_path=}, {total_frames=}, {video_fps=}, time={time.time() - st:.3f}s")
+    print(video.shape)
+    # deepcodec already returns in TCHW format
+    #video = torch.tensor(video).permute(0, 3, 1, 2)
     sample_fps = nframes / max(total_frames, 1e-6) * video_fps
     return video, sample_fps
 
@@ -269,7 +274,9 @@ sys.modules["qwen_vl_utils.vision_process"].get_video_reader_backend = get_video
 sys.modules["qwen_vl_utils.vision_process"].VIDEO_READER_BACKENDS = VIDEO_READER_BACKENDS
 
 
-FPS_MAX_FRAMES = 1024 # 768 = 256 * 3
+FPS_MAX_FRAMES = 3*3*1024 # 768 = 256 * 3
+sys.modules["qwen_vl_utils.vision_process"].VIDEO_MAX_PIXELS = FPS_MAX_FRAMES*28*28
+
 def smart_nframes(
     ele: dict,
     total_frames: int,

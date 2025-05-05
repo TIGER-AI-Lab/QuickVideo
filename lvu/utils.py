@@ -4,6 +4,76 @@ import torch.nn.functional as F
 from typing import Tuple, Union
 from .lvu_config import LVUConfig, LVULayerConfig
 from .lvu_cache import DynamicCache, LVUCache
+from qwen_vl_utils.vision_process import process_vision_info
+import math
+
+class PixelIterator:
+
+    def __init__(self, frames, frames_per_block, processor):
+        self.pos = 0
+        self.frames_per_block = frames_per_block
+        self.frames = frames[0]
+        self.processor = processor
+        self.finished = False
+        self.video_kwargs = {"fps": 2}
+
+    def __iter__(self):
+            return self
+    
+    def __next__(self):
+
+        if self.finished:
+            return None
+        elif self.pos + self.frames_per_block >= self.frames.shape[0]:
+            self.finished = True
+            return self.processor(
+                text="a",
+                images=[],
+                videos=[self.frames[self.pos:self.frames.shape[0]]],
+                padding=True,
+                return_tensors="pt",
+                **self.video_kwargs,
+            )['pixel_values_videos']
+        else:
+            pixels = self.processor(
+                text="a",
+                images=[],
+                videos=[self.frames[self.pos:self.pos + self.frames_per_block]],
+                padding=True,
+                return_tensors="pt",
+                **self.video_kwargs,
+            )['pixel_values_videos']
+            self.pos += self.frames_per_block
+            return pixels
+
+
+    
+
+class QwenVideoReaderInterleaved:
+
+    def __init__(self, path, processor):
+        self.path = path
+        self.frames_per_block = None
+        self.batch = None
+        self.processor = processor
+        
+    def process(self):
+
+        conv = [{
+            "role": "user",
+            "content": [{"type": "video", "video": str(self.path), "max_pixels": math.inf, "fps": 2}]
+        }]
+                
+        self.image_inputs, self.video_inputs,  self.video_kwargs = process_vision_info(conv, return_video_kwargs=True)
+
+    
+    def set_frames_per_block(self, num_frames):
+        self.frames_per_block = num_frames
+
+
+    def get_pixel_iterator(self):
+        return PixelIterator(self.video_inputs, self.frames_per_block, self.processor, self.video_kwargs)
+
 
 def get_top_k_mask_to_predict(attn_weights, keys, values, outputs, top_k=100, predict_type="attention_weights"):
     """

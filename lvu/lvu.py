@@ -73,9 +73,12 @@ if __name__ == "__main__":
     #     top_k_decay_factor=0.33,
     # )
     
+    import sys
+    model = sys.argv[1]
+
     config = LVUConfig(
         model_name_or_path="Qwen/Qwen2.5-VL-7B-Instruct", 
-        model_type="qwen25_lvu",
+        model_type=model,
         # top_k_predict_type="query_attention_weights",
         # top_k_predict_type="query_attention_weights_by_value_norm",
         top_k_predict_type="key_norms_small",

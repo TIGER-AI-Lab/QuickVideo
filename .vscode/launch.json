@@ -14,16 +14,19 @@
             "justMyCode": false
         },
         {
-            "name": "Debug_2",
+            "name": "Debug_Interleaved",
             "type": "debugpy",
             "request": "launch",
-            "program": "main.py",
+            "module": "lvu.lvu",
             "console": "integratedTerminal",
             "env": {
                 "CUDA_VISIBLE_DEVICES": "0",
                 "DEEPCODEC_CORES": "8"
             },
+            "args": [
+                "qwen25_lvu_interleaved"
+            ],
             "justMyCode": false
-        },
+        }
     ]
 }

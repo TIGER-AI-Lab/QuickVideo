@@ -7,6 +7,28 @@ from .lvu_cache import DynamicCache, LVUCache
 from qwen_vl_utils.vision_process import process_vision_info
 import math
 
+
+import numpy as np
+from PIL import Image
+import os
+
+def save_image_to_home(img_array: torch.Tensor, filename: str = "img/output.png"):
+    # Ensure shape is (H, W, 3)
+    img = np.transpose(img_array.cpu().numpy(), (1, 2, 0))
+
+    if img.dtype != np.uint8:
+        img = np.clip(img, 0, 1) if img.max() <= 1.0 else np.clip(img, 0, 255)
+        img = (img * 255).astype(np.uint8) if img.max() <= 1.0 else img.astype(np.uint8)
+
+    pil_img = Image.fromarray(img)
+    # Get home directory
+    home_path = os.path.expanduser("~")
+    # Save image
+    save_path = os.path.join(home_path, filename)
+    pil_img.save(save_path)
+    print(f"Image saved to {save_path}")
+
+
 class PixelIterator:
 
     def __init__(self, frames, frames_per_block, processor):
@@ -35,6 +57,7 @@ class PixelIterator:
                 **self.video_kwargs,
             )['pixel_values_videos']
         else:
+            # save_image_to_home(self.frames[self.pos:self.frames.shape[0]][0], f"img/{self.pos}.png")
             pixels = self.processor(
                 text="a",
                 images=[],
@@ -72,7 +95,7 @@ class QwenVideoReaderInterleaved:
 
 
     def get_pixel_iterator(self):
-        return PixelIterator(self.video_inputs, self.frames_per_block, self.processor, self.video_kwargs)
+        return PixelIterator(self.video_inputs, self.frames_per_block, self.processor)
 
 
 def get_top_k_mask_to_predict(attn_weights, keys, values, outputs, top_k=100, predict_type="attention_weights"):

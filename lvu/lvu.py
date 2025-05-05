@@ -14,6 +14,8 @@ class LVU:
                 "attn_implementation": "flash_attention_2",
             }
             model = AutoModelForImageTextToText.from_pretrained(config.model_name_or_path, **model_init_kwargs)
+        
+        # time processing
         if processor is None:
             processor = AutoProcessor.from_pretrained(config.model_name_or_path)
         
@@ -77,7 +79,7 @@ if __name__ == "__main__":
         # top_k_predict_type="query_attention_weights",
         # top_k_predict_type="query_attention_weights_by_value_norm",
         top_k_predict_type="key_norms_small",
-        video_group_size=16,
+        video_group_size=2*16,
         top_k=None,
         top_p=0.2,
         prefill_prune_starting_layer=None,
@@ -103,8 +105,8 @@ if __name__ == "__main__":
     DEMO_VIDEO = '/scratch/b3schnei/data/video/20min.mp4'
     DEMO_QUESTIONS = [
         "As depicted in the video, how is the relationship between the rabbit and human?\nOptions:\nA. Hostile.\nB. Friend.\nC. Cooperator.\nD. No one is correct above.\nAnswer with the option's letter from the given choices directly.",
-        "What is the impression of the video?\nOptions:\nA. Sad.\nB. Funny.\nC. Horrible.\nD. Silent.\nAnswer with the option's letter from the given choices directly.",
-        "What is the subject of the video?\nOptions:\nA. Rabbit likes to eat carrots.\nB. How to raise a rabbit.\nC. A rabbit gives people trouble.\nD. A rabbit performs for food.\nAnswer with the option's letter from the given choices directly.",
+#        "What is the impression of the video?\nOptions:\nA. Sad.\nB. Funny.\nC. Horrible.\nD. Silent.\nAnswer with the option's letter from the given choices directly.",
+#        "What is the subject of the video?\nOptions:\nA. Rabbit likes to eat carrots.\nB. How to raise a rabbit.\nC. A rabbit gives people trouble.\nD. A rabbit performs for food.\nAnswer with the option's letter from the given choices directly.",
     ]
     EXPECTED_ANSWERS = ['A', 'B', 'C']
     video_path = DEMO_VIDEO

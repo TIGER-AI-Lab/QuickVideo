@@ -8,7 +8,7 @@
             "module": "lvu.lvu",
             "console": "integratedTerminal",
             "env": {
-                "CUDA_VISIBLE_DEVICES": "0",
+                "CUDA_VISIBLE_DEVICES": "1",
                 "DEEPCODEC_CORES": "8"
             },
             "justMyCode": false

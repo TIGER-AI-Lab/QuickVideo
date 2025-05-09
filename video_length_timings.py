@@ -6,8 +6,8 @@ import numpy as np
 from scipy import stats
 import glob
 
-NUM_RUNS = 1  # Number of runs for averaging and confidence intervals
-FIXED_THREADS = 8  # Fixed number of threads for all tests
+NUM_RUNS = 10  # Number of runs for averaging and confidence intervals
+FIXED_THREADS = 16  # Fixed number of threads for all tests
 SAMPLE_FPS = 1  # Sample at 1 frame per second
 
 def main():

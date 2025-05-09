@@ -4,7 +4,7 @@ import sys
 import numpy as np
 from scipy import stats
 
-NUM_RUNS = 1  # Number of runs for averaging and confidence intervals
+NUM_RUNS = 10  # Number of runs for averaging and confidence intervals
 
 def main():
     video_path = sys.argv[1]

@@ -4,11 +4,11 @@ import sys
 import numpy as np
 from scipy import stats
 
-NUM_RUNS = 1  # Number of runs for averaging and confidence intervals
+NUM_RUNS = 10  # Number of runs for averaging and confidence intervals
 
 def main():
     video_path = sys.argv[1]
-    num_threads = 8  # Fixed number of threads
+    num_threads = 16  # Fixed number of threads
     temp = DCVR(video_path, num_threads=1)
     num_frames = len(temp)
     fps = round(temp.get_fps())

@@ -7,8 +7,11 @@
             "request": "launch",
             "module": "lvu.lvu",
             "console": "integratedTerminal",
+            "args": [
+                "qwen25_lvu"
+            ],
             "env": {
-                "CUDA_VISIBLE_DEVICES": "1",
+                "CUDA_VISIBLE_DEVICES": "0",
                 "DEEPCODEC_CORES": "8"
             },
             "justMyCode": false
@@ -27,6 +30,22 @@
                 "qwen25_lvu_interleaved"
             ],
             "justMyCode": false
-        }
+        },
+        {
+            "name": "Debug (deepcodec off)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "lvu.lvu",
+            "console": "integratedTerminal",
+            "args": [
+                "qwen25_lvu"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0",
+                "DEEPCODEC_CORES": "8",
+                "DEEPCODEC_DISABLED": "TRUE"
+            },
+            "justMyCode": false
+        },
     ]
 }

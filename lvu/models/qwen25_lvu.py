@@ -205,17 +205,16 @@ def lvu_qwen25_vl_decoder_layer_forward(
     return outputs
 
 
-
-
-
 import qwen_vl_utils.vision_process
 from qwen_vl_utils.vision_process import *
 import sys
 
 def is_deepcodec_available() -> bool:
     import importlib.util
-    #return False
-    return importlib.util.find_spec("deepcodec") is not None
+    if "DEEPCODEC_DISABLED" in os.environ:
+        return False
+    else:
+        return importlib.util.find_spec("deepcodec") is not None
 
 @lru_cache(maxsize=1)
 def get_video_reader_backend() -> str:
@@ -451,9 +450,8 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         video_inputs = results["video_inputs"]
         video_kwargs = results["video_kwargs"]
     end = time.time()
-    print(f"Preprocessing time for video: {end - start:.2f}s")
+    video_processing_time = end - start
     
-    s = time.time()
     whole_inputs = processor(
         text=text,
         images=image_inputs,
@@ -462,8 +460,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         return_tensors="pt",
         **video_kwargs,
     )
-    e = time.time()
-    print(print(f"Tokenizer time was: {e - s:.2f}s"))
+
     whole_inputs = whole_inputs.to(model.device)
     n_video_tokens = (whole_inputs['input_ids'] == model.config.video_token_id).sum().item()
     video_token_idxs = (whole_inputs['input_ids'] == model.config.video_token_id).nonzero(as_tuple=True)[1]
@@ -519,10 +516,15 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     if lvu_config.query_based:
         past_key_values.set_prompt_length(prompt_input_ids.shape[1])
     video_groups_tokens[0] += first_video_token_id_idx # add the tokens before the first video group as well
-        
+    
+    total_prefill = 0
+
     # start processing the video groups
     for i, pixel_values_videos_groups_i in tqdm(enumerate(pixel_values_videos_groups), 
         desc="Processing video groups", total=len(pixel_values_videos_groups), disable=not lvu_config.use_tqdm):
+        
+        prefill_start = time.time()
+        
         group_i_inputs = {
             "video_grid_thw": video_groups_grid_thw[i],
             "second_per_grid_ts": whole_inputs['second_per_grid_ts'],
@@ -562,6 +564,8 @@ def chat_lvu_model(self, messages, **generation_kwargs):
                         for j in range(len(outputs.past_key_values[i])):
                             past_key_values[i][j] = torch.cat((past_key_values[i][j], outputs.past_key_values[i][j]), dim=2)
         # print(f"past_key_values shape: {past_key_values[0][0].shape}")
+        prefill_end = time.time()
+        total_prefill += prefill_end-prefill_start
     assert past_len < whole_inputs['input_ids'].shape[1], "The past length should be less than the final input length."
     if lvu_config.query_based:
         # reset prompt length as all video groups are processed
@@ -586,6 +590,10 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     generated_ids = model.generate(**final_inputs, **generation_kwargs)
     lvu_config.enable = cache_enable
     
+    print(f"total time spent fetching frames was: {video_processing_time}")
+    print(f"total time spent on prefill was: {total_prefill}")
+    print(f"Time spent decoding was not measured")
+
     generated_ids_trimmed = [
         out_ids[len(in_ids) :] for in_ids, out_ids in zip(final_inputs.input_ids, generated_ids)
     ]

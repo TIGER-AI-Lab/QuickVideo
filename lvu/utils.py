@@ -1,12 +1,11 @@
 import torch
 import random
 import torch.nn.functional as F
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional
 from .lvu_config import LVUConfig, LVULayerConfig
 from .lvu_cache import DynamicCache, LVUCache
-from qwen_vl_utils.vision_process import process_vision_info
 import math
-
+import time
 
 import numpy as np
 from PIL import Image
@@ -31,54 +30,137 @@ def save_image_to_home(img_array: torch.Tensor, filename: str = "img/output.png"
 
 class PixelIterator:
 
-    def __init__(self, frames, frames_per_block, processor):
-        self.pos = 0
+    def __init__(self,qwen_vr, vr, frames_per_block,video_kwargs, processor):
+
+        self.qwen_vr = qwen_vr
+        self.iterations = 0
         self.frames_per_block = frames_per_block
-        self.frames = frames[0]
+        self.vr = vr
         self.processor = processor
-        self.finished = False
-        self.video_kwargs = {"fps": 2}
+        self.video_kwargs = video_kwargs
 
     def __iter__(self):
-            return self
+        return self
     
     def __next__(self):
 
-        if self.finished:
-            return None
-        elif self.pos + self.frames_per_block >= self.frames.shape[0]:
-            self.finished = True
-            return self.processor(
-                text="a",
-                images=[],
-                videos=[self.frames[self.pos:self.frames.shape[0]]],
-                padding=True,
-                return_tensors="pt",
-                **self.video_kwargs,
-            )['pixel_values_videos']
-        else:
-            # save_image_to_home(self.frames[self.pos:self.frames.shape[0]][0], f"img/{self.pos}.png")
-            pixels = self.processor(
-                text="a",
-                images=[],
-                videos=[self.frames[self.pos:self.pos + self.frames_per_block]],
-                padding=True,
-                return_tensors="pt",
-                **self.video_kwargs,
-            )['pixel_values_videos']
-            self.pos += self.frames_per_block
-            return pixels
+        s = time.time()
+        frames = torch.from_numpy(next(self.vr)).float()
+        e = time.time()
+        self.qwen_vr.total_timing += e-s
+        #save_image_to_home(frames[8], f"img/{self.iterations}.png")
+        pixels = self.processor(
+            text="a",
+            images=[],
+            videos=[frames],
+            padding=True,
+            return_tensors="pt",
+            **self.video_kwargs,
+        )['pixel_values_videos']
+        self.iterations += 1
+        return pixels
 
+from qwen_vl_utils.vision_process import smart_nframes, extract_vision_info,IMAGE_FACTOR,VIDEO_MIN_PIXELS, get_video_reader_backend, VIDEO_READER_BACKENDS,FRAME_FACTOR,smart_resize,transforms,InterpolationMode,VIDEO_TOTAL_PIXELS,VIDEO_MAX_PIXELS,logger
+from deepcodec import InterleavedVideoReader
 
+def _read_video_interleaved(
+    ele: dict,
+):
     
+    video_path = ele["video"]
+    num_cores = int(os.environ.get("DEEPCODEC_CORES", "4"))
+    vr = InterleavedVideoReader(video_path, num_threads=num_cores)
+    # TODO: support start_pts and end_pts
+    if 'video_start' in ele or 'video_end' in ele:
+        raise NotImplementedError("not support start_pts and end_pts in deepcodec for now.")
+    total_frames, video_fps = len(vr), vr.get_fps()
+
+    nframes = smart_nframes(ele, total_frames=total_frames, video_fps=video_fps)
+    idx = torch.linspace(0, total_frames - 1, nframes).round().long().tolist()
+    #video = torch.from_numpy(vr.get_batch(idx))
+
+    sample_fps = nframes / max(total_frames, 1e-6) * video_fps
+
+    return vr,idx, sample_fps
+
+def fetch_video(ele: dict, image_factor: int = IMAGE_FACTOR, return_video_sample_fps: bool = False) -> torch.Tensor | list[Image.Image]:
+    if isinstance(ele["video"], str):
+        vr, idx, sample_fps = _read_video_interleaved(ele)
+        nframes, height, width = len(idx), vr.height, vr.width
+        min_pixels = ele.get("min_pixels", VIDEO_MIN_PIXELS)
+        total_pixels = ele.get("total_pixels", VIDEO_TOTAL_PIXELS)
+        max_pixels = max(min(VIDEO_MAX_PIXELS, total_pixels / nframes * FRAME_FACTOR), int(min_pixels * 1.05))
+        max_pixels_supposed = ele.get("max_pixels", max_pixels)
+        if max_pixels_supposed > max_pixels:
+            logger.warning(f"The given max_pixels[{max_pixels_supposed}] exceeds limit[{max_pixels}].")
+        max_pixels = min(max_pixels_supposed, max_pixels)
+        if "resized_height" in ele and "resized_width" in ele:
+            resized_height, resized_width = smart_resize(
+                ele["resized_height"],
+                ele["resized_width"],
+                factor=image_factor,
+            )
+        else:
+            resized_height, resized_width = smart_resize(
+                height,
+                width,
+                factor=image_factor,
+                min_pixels=min_pixels,
+                max_pixels=max_pixels,
+            )
+        
+        vr.height = resized_height
+        vr.width = resized_width
+        vr.interpolation = "LANCZOS"
+        #vr.interpolation = "BICUBIC"
+        vr.process(idx)
+
+        if return_video_sample_fps:
+            return vr, sample_fps, nframes
+        return vr
+    else:
+        raise NotImplementedError
+
+
+def process_vision_info(
+    conversations: list[dict] | list[list[dict]],
+    return_video_kwargs: bool = False,
+) -> tuple[list[Image.Image] | None, list[torch.Tensor | list[Image.Image]] | None, Optional[dict]]:
+
+    vision_infos = extract_vision_info(conversations)
+    ## Read images or videos
+    image_inputs = []
+    video_inputs = []
+    video_sample_fps_list = []
+    for vision_info in vision_infos:
+        if "image" in vision_info or "image_url" in vision_info:
+            raise Exception("NotImplementedError")
+        elif "video" in vision_info:
+            video_input, video_sample_fps, nframes = fetch_video(vision_info, return_video_sample_fps=True)
+            video_sample_fps_list.append(video_sample_fps)
+            video_inputs.append(video_input)
+        else:
+            raise ValueError("image, image_url or video should in content.")
+    if len(image_inputs) == 0:
+        image_inputs = None
+    if len(video_inputs) == 0:
+        video_inputs = None
+    if return_video_kwargs:
+        return image_inputs, video_inputs[0], {'fps': video_sample_fps_list}, nframes
+    return image_inputs, video_inputs[0]
+
+   
 
 class QwenVideoReaderInterleaved:
 
-    def __init__(self, path, processor):
+    def __init__(self, path, threads, intervals, processor):
+        self.total_timing = 0
         self.path = path
         self.frames_per_block = None
         self.batch = None
         self.processor = processor
+        self.threads = threads
+        self.intervals = intervals
         
     def process(self):
 
@@ -86,16 +168,29 @@ class QwenVideoReaderInterleaved:
             "role": "user",
             "content": [{"type": "video", "video": str(self.path), "max_pixels": math.inf, "fps": 2}]
         }]
-                
-        self.image_inputs, self.video_inputs,  self.video_kwargs = process_vision_info(conv, return_video_kwargs=True)
+        s = time.time()        
+        self.image_inputs, self.vr,  self.video_kwargs, self.nframes = process_vision_info(conv, return_video_kwargs=True)
+        e = time.time()
+        self.total_timing += e-s
 
-    
+    def dummy_input(self):
+                
+        return {
+            "video_grid_thw" : torch.tensor((self.nframes/2, self.vr.height / 14, self.vr.width / 14), dtype=torch.int64).unsqueeze(dim=0), 
+            "second_per_grid_ts": -1,
+            "pixel_values_videos": None
+        }
+        
+    def dummy_video_inputs(self):
+        return [torch.empty((self.nframes, 3, self.vr.height, self.vr.width), dtype=torch.float32)]
+
     def set_frames_per_block(self, num_frames):
+        self.vr.frame_iter = num_frames
         self.frames_per_block = num_frames
 
 
     def get_pixel_iterator(self):
-        return PixelIterator(self.video_inputs, self.frames_per_block, self.processor)
+        return PixelIterator(self, self.vr, self.frames_per_block,self.video_kwargs, self.processor)
 
 
 def get_top_k_mask_to_predict(attn_weights, keys, values, outputs, top_k=100, predict_type="attention_weights"):
@@ -459,3 +554,122 @@ def post_process_kv_cache(
     # print(f"Reduced keys and values from {old_k_shape} to {top_k_keys.shape} for layer {layer_idx}")
     
     return hidden_states, attention_mask, position_ids, cache_position, position_embeddings, present_key_value
+
+from transformers.models.qwen2_5_vl.processing_qwen2_5_vl import Qwen2_5_VLProcessorKwargs, BatchFeature
+
+def dummy_call(
+    self,
+    images = None,
+    text = None,
+    videos = None,
+    **kwargs,
+):
+    """
+    Main method to prepare for the model one or several sequences(s) and image(s). This method forwards the `text`
+    and `kwargs` arguments to Qwen2TokenizerFast's [`~Qwen2TokenizerFast.__call__`] if `text` is not `None` to encode
+    the text. To prepare the vision inputs, this method forwards the `vision_infos` and `kwrags` arguments to
+    Qwen2VLImageProcessor's [`~Qwen2VLImageProcessor.__call__`] if `vision_infos` is not `None`.
+
+    Args:
+        images (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, `List[PIL.Image.Image]`, `List[np.ndarray]`, `List[torch.Tensor]`):
+            The image or batch of images to be prepared. Each image can be a PIL image, NumPy array or PyTorch
+            tensor. Both channels-first and channels-last formats are supported.
+        text (`str`, `List[str]`, `List[List[str]]`):
+            The sequence or batch of sequences to be encoded. Each sequence can be a string or a list of strings
+            (pretokenized string). If the sequences are provided as list of strings (pretokenized), you must set
+            `is_split_into_words=True` (to lift the ambiguity with a batch of sequences).
+        videos (`np.ndarray`, `torch.Tensor`, `List[np.ndarray]`, `List[torch.Tensor]`):
+            The image or batch of videos to be prepared. Each video can be a 4D NumPy array or PyTorch
+            tensor, or a nested list of 3D frames. Both channels-first and channels-last formats are supported.
+        return_tensors (`str` or [`~utils.TensorType`], *optional*):
+            If set, will return tensors of a particular framework. Acceptable values are:
+            - `'tf'`: Return TensorFlow `tf.constant` objects.
+            - `'pt'`: Return PyTorch `torch.Tensor` objects.
+            - `'np'`: Return NumPy `np.ndarray` objects.
+            - `'jax'`: Return JAX `jnp.ndarray` objects.
+
+    Returns:
+        [`BatchFeature`]: A [`BatchFeature`] with the following fields:
+
+        - **input_ids** -- List of token ids to be fed to a model. Returned when `text` is not `None`.
+        - **attention_mask** -- List of indices specifying which tokens should be attended to by the model (when
+            `return_attention_mask=True` or if *"attention_mask"* is in `self.model_input_names` and if `text` is not
+            `None`).
+        - **pixel_values** -- Pixel values to be fed to a model. Returned when `images` is not `None`.
+        - **pixel_values_videos** -- Pixel values of videos to be fed to a model. Returned when `videos` is not `None`.
+        - **image_grid_thw** -- List of image 3D grid in LLM. Returned when `images` is not `None`.
+        - **video_grid_thw** -- List of video 3D grid in LLM. Returned when `videos` is not `None`.
+        - **second_per_grid_ts** -- List of video seconds per time grid. Returned when `videos` is not `None`.
+    """
+    video_in = kwargs.pop("video_inputs")
+
+
+    output_kwargs = self._merge_kwargs(
+        Qwen2_5_VLProcessorKwargs,
+        tokenizer_init_kwargs=self.tokenizer.init_kwargs,
+        **kwargs,
+    )
+    if images is not None:
+        image_inputs = self.image_processor(images=images, videos=None, **output_kwargs["images_kwargs"])
+        image_grid_thw = image_inputs["image_grid_thw"]
+    else:
+        image_inputs = {}
+        image_grid_thw = None
+
+    if videos is not None:
+        
+        videos_inputs = {
+            "video_grid_thw" : video_in["video_grid_thw"],
+            "second_per_grid_ts": -1,
+            "pixel_values_videos": None
+        }        
+
+        video_grid_thw = video_in["video_grid_thw"]
+
+        fps = output_kwargs["videos_kwargs"].pop("fps", 2.0)
+        if isinstance(fps, (int, float)):
+            second_per_grid_ts = [self.image_processor.temporal_patch_size / fps] * len(video_grid_thw)
+        elif hasattr(fps, "__len__") and len(fps) == len(video_grid_thw):
+            second_per_grid_ts = [self.image_processor.temporal_patch_size / tmp for tmp in fps]
+        else:
+            raise ValueError(
+                f"The length of fps ({len(fps) if hasattr(fps, '__len__') else fps}) must be equal to the length of video_grid_thw ({len(video_grid_thw)}) or fps should be a single number."
+            )
+        videos_inputs.update({"second_per_grid_ts": second_per_grid_ts})
+
+    else:
+        videos_inputs = {}
+        video_grid_thw = None
+
+    if not isinstance(text, list):
+        text = [text]
+
+    if image_grid_thw is not None:
+        merge_length = self.image_processor.merge_size**2
+        index = 0
+        for i in range(len(text)):
+            while self.image_token in text[i]:
+                text[i] = text[i].replace(
+                    self.image_token,
+                    "<|placeholder|>" * (image_grid_thw[index].prod() // merge_length),
+                    1,
+                )
+                index += 1
+            text[i] = text[i].replace("<|placeholder|>", self.image_token)
+
+    if video_grid_thw is not None:
+        merge_length = self.image_processor.merge_size**2
+        index = 0
+        for i in range(len(text)):
+            while self.video_token in text[i]:
+                text[i] = text[i].replace(
+                    self.video_token,
+                    "<|placeholder|>" * (video_grid_thw[index].prod() // merge_length),
+                    1,
+                )
+                index += 1
+            text[i] = text[i].replace("<|placeholder|>", self.video_token)
+
+    text_inputs = self.tokenizer(text, **output_kwargs["text_kwargs"])
+
+    return BatchFeature(data={**text_inputs, **image_inputs, **videos_inputs})

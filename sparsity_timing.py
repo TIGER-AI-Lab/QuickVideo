@@ -4,7 +4,7 @@ import sys
 import numpy as np
 from scipy import stats
 
-NUM_RUNS = 10  # Number of runs for averaging and confidence intervals
+NUM_RUNS = 5  # Number of runs for averaging and confidence intervals
 
 def main():
     video_path = sys.argv[1]
@@ -15,7 +15,7 @@ def main():
     print(f"FPS is {fps}")
     del temp
 
-    seconds_between_frames = [1, 2, 8, 16, 32]
+    seconds_between_frames = [1, 2, 4, 8, 16]
     for seconds in seconds_between_frames:
         frame_interval = seconds * fps
         indices = list(range(0, num_frames, frame_interval))

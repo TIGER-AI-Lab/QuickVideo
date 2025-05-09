@@ -207,7 +207,7 @@ def lvu_qwen25_vl_decoder_layer_forward(
 import qwen_vl_utils.vision_process
 from qwen_vl_utils.vision_process import *
 import sys
-FPS_MAX_FRAMES = 3*3*1024 # 768 = 256 * 3
+FPS_MAX_FRAMES = 100_000 # 768 = 256 * 3
 def smart_nframes(
     ele: dict,
     total_frames: int,

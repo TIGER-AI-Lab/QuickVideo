@@ -82,7 +82,7 @@ if __name__ == "__main__":
         # top_k_predict_type="query_attention_weights",
         # top_k_predict_type="query_attention_weights_by_value_norm",
         top_k_predict_type="key_norms_small",
-        video_group_size=0,#2*16,
+        video_group_size=16,
         top_k=None,
         top_p=0.2,
         prefill_prune_starting_layer=None,

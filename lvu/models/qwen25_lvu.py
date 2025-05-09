@@ -274,7 +274,7 @@ VIDEO_READER_BACKENDS = {
 sys.modules["qwen_vl_utils.vision_process"].get_video_reader_backend = get_video_reader_backend
 sys.modules["qwen_vl_utils.vision_process"].VIDEO_READER_BACKENDS = VIDEO_READER_BACKENDS
 
-FPS_MAX_FRAMES = 3*3*1024 # 768 = 256 * 3
+FPS_MAX_FRAMES = 100_000 # 768 = 256 * 3
 
 def smart_nframes(
     ele: dict,

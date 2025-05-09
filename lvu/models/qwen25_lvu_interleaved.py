@@ -278,7 +278,7 @@ VIDEO_READER_BACKENDS = {
 sys.modules["qwen_vl_utils.vision_process"].get_video_reader_backend = get_video_reader_backend
 sys.modules["qwen_vl_utils.vision_process"].VIDEO_READER_BACKENDS = VIDEO_READER_BACKENDS
 
-FPS_MAX_FRAMES = 3*3*1024 # 768 = 256 * 3
+FPS_MAX_FRAMES = 100_000 # 768 = 256 * 3
 sys.modules["qwen_vl_utils.vision_process"].FPS_MAX_FRAMES = FPS_MAX_FRAMES
 
 # def smart_nframes(
@@ -440,7 +440,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     if not cache_file.exists():        
         # Interleaved processing
         #image_inputs, video_inputs, video_kwargs = process_vision_info(messages, return_video_kwargs=True)
-        vr = QwenVideoReaderInterleaved(video_path,8,64,processor)
+        vr = QwenVideoReaderInterleaved(video_path,16,64,processor)
         vr.process()
 
         # used for finding correct shapes of blocks

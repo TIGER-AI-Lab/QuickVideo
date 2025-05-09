@@ -442,7 +442,7 @@ requires-dist = [
     { name = "sentencepiece", specifier = ">=0.2.0" },
     { name = "setuptools" },
     { name = "torch", specifier = ">=2.6.0" },
-    { name = "torchcodec", specifier = "==0.3" },
+    { name = "torchcodec", specifier = "==0.2" },
     { name = "torchvision", specifier = ">=0.21.0" },
     { name = "transformers", specifier = ">=4.50.0" },
 ]
@@ -1326,17 +1326,15 @@ wheels = [
 
 [[package]]
 name = "torchcodec"
-version = "0.3.0"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7a/d7/c8ccb31b7cf1eaad822589006d79f654e2ef8000cf8396963f91e81aab47/torchcodec-0.3.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:3ae4e9297e2dd06047855eb80070cb05cbb0be15529d630601506d2f493babc4", size = 2931694 },
-    { url = "https://files.pythonhosted.org/packages/69/c8/17f6cd0f57229f1889cd0a3d8c6d5d30c7c15945c17b08ba82021179dbb6/torchcodec-0.3.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:b83f8a0902a5335c7bfecab0c79085521fd014f5c7280a852312024badea8287", size = 1248661 },
-    { url = "https://files.pythonhosted.org/packages/49/b0/c5696dc2843474ded54b39c3ac0649a2d7de27728dddd0a539acc72c60c8/torchcodec-0.3.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:4620b9a850f2138bdcc71263a9221cfccf8bd3eca7dba37ed3a6ae794504da01", size = 3157794 },
-    { url = "https://files.pythonhosted.org/packages/58/69/75c5baf81b8832b611a416d7c0e7281cad4cdad0d19a84e7d32120c2e071/torchcodec-0.3.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:44cd7e73236c0028df34c69a3e53eab0119899ae2c39924e5e95bd95b88bd37f", size = 1249326 },
-    { url = "https://files.pythonhosted.org/packages/a1/dc/9634ce72d191a32dadd8b1a98948be08045dd5d71a1ab6e977fc912afedb/torchcodec-0.3.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:f021a2e5a8598dc17097f5f1690273fc58fb0329ea2e435fca735ae296b38006", size = 3357747 },
-    { url = "https://files.pythonhosted.org/packages/67/7c/499db8c68c0ce1abd43968c78659258520490682570dce50090831ccf5a6/torchcodec-0.3.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:3a723231b1a9f2a7faf1c4ebb611c991c0bbda7f4425ab040345f1b5a7f3d19c", size = 1248998 },
-    { url = "https://files.pythonhosted.org/packages/4b/18/4f45d2d32f03f2a940ac07ab51e19945ab665e3cdfbc3be48571c62be3f2/torchcodec-0.3.0-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:bbd08963a0084b7502b77ae0fafd11f73b64006921fe19bb26f34286b13d6cf0", size = 3263773 },
-    { url = "https://files.pythonhosted.org/packages/10/d3/c8148df6c201d5ebe713a9c4302062e8ec3ffc122881901d88838b149728/torchcodec-0.3.0-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:c138388fab0e0b9f151ae6b7947ae469f102198d2bfc7e3ef5d579336c61b714", size = 1250731 },
+    { url = "https://files.pythonhosted.org/packages/c7/19/c03287d8c47306fe5214667adf3a522ce00b0589314c9983c3a9a4068c25/TorchCodec-0.2.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:f845356627f7e4e5a2b6daaf8525f19d2a467c46b1130ee9945153fb7e877a11", size = 2822334 },
+    { url = "https://files.pythonhosted.org/packages/d1/b6/19d4c13661bb681e7e7a3541f6876ea2059448708c433078152339e7c16b/TorchCodec-0.2.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:cf88951edb1e8fadbd2aa3d81453c0909fa2f501209475b9d4684ecea9117cc5", size = 755421 },
+    { url = "https://files.pythonhosted.org/packages/26/5b/16c30a9bfd3d056c6c10598d3067a850b46202d43b6984da117fa91d1a25/TorchCodec-0.2.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:2e831722e6723eb9d632bd0e04b0320723985d19e43ef4a1624f5425efc0ef9b", size = 3028185 },
+    { url = "https://files.pythonhosted.org/packages/9f/0f/ec751e200fe44660139755f637b20836496b3e28a653d4b8f131f26e3e04/TorchCodec-0.2.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9c9dd97f1b59e02ee8cc1e140650aae04e469e9fb848d9b70af9e2fddfcb9ff3", size = 755291 },
+    { url = "https://files.pythonhosted.org/packages/32/80/1d948edfe98e5e918b221560527605ea2539c5cbd699db8f3d6183791449/TorchCodec-0.2.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:51090be7bb7bf7a45dc65c599b0e864852a97df397bb70fa2a976dd6e9cb5358", size = 2962876 },
+    { url = "https://files.pythonhosted.org/packages/2c/e9/063c3c6f5596646b29ce4f2d8fac88f71c52f912d58cabd22d778fd6b326/TorchCodec-0.2.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:32e3b7a291beefe7bcb6c764aa793367594849b5bd7ad0b669495915d22fd5fa", size = 754960 },
 ]
 
 [[package]]

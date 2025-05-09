@@ -17,6 +17,6 @@ dependencies = [
     "transformers>=4.50.0",
     "deepcodec==0.0.8",
     "setuptools",
-    "torchcodec==0.3",
+    "torchcodec==0.2",
     "scipy",
 ]

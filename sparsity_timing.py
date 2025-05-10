@@ -5,6 +5,8 @@ import numpy as np
 from scipy import stats
 
 NUM_RUNS = 5  # Number of runs for averaging and confidence intervals
+height = 448
+width = 448
 
 def main():
     video_path = sys.argv[1]

@@ -39,16 +39,17 @@ def main():
                 start_decode = time.time()
                 device = "cpu"
                 decoder = VideoDecoder(video_path, device=device, num_ffmpeg_threads=thread)
-                b = decoder.get_frames_at(indices=indices)
+                b = decoder.get_frames_at(indices=indices).data
                 elapsed_decode = time.time() - start_decode
                 decode_times.append(elapsed_decode)
                 del decoder  # Ensure decoder is released
-
+                
+                print(f"Shape before resize: {b.shape}")
                 # Measure resizing time
                 start_resize = time.time()
                 r = resize_transform(b)
                 elapsed_resize = time.time() - start_resize
-
+                print(f"Shape after resize: {r.shape}")
                 del b
                 del r
                 # Track combined time (decode + resize)

@@ -440,7 +440,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     if not cache_file.exists():        
         # Interleaved processing
         #image_inputs, video_inputs, video_kwargs = process_vision_info(messages, return_video_kwargs=True)
-        vr = QwenVideoReaderInterleaved(video_path,16,64,processor)
+        vr = QwenVideoReaderInterleaved(video_path,16,32,processor)
         vr.process()
 
         # used for finding correct shapes of blocks

@@ -3,7 +3,8 @@ from deepcodec import VideoReader as DCVR
 import sys
 import numpy as np
 from scipy import stats
-from torchvision import transforms as T, InterpolationMode
+from torchvision import transforms as T,
+
 
 NUM_RUNS = 5  # Number of runs for averaging and confidence intervals
 
@@ -27,7 +28,7 @@ def main():
         try:
             import torch
             from torchcodec.decoders import VideoDecoder
-            resize_transform = T.Resize((448, 448), interpolation=InterpolationMode.BICUBIC, antialias=True)
+            resize_transform = T.Resize((448, 448), interpolation=T.InterpolationMode.BICUBIC, antialias=True)
 
             times = []
             decode_times = []

@@ -44,12 +44,12 @@ def main():
                 decode_times.append(elapsed_decode)
                 del decoder  # Ensure decoder is released
                 
-                print(f"Shape before resize: {b.shape}")
+                #print(f"Shape before resize: {b.shape}")
                 # Measure resizing time
                 start_resize = time.time()
                 r = resize_transform(b)
                 elapsed_resize = time.time() - start_resize
-                print(f"Shape after resize: {r.shape}")
+                #print(f"Shape after resize: {r.shape}")
                 del b
                 del r
                 # Track combined time (decode + resize)

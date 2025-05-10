@@ -68,8 +68,8 @@ def _read_video_interleaved(
 ):
     
     video_path = ele["video"]
-    num_cores = int(os.environ.get("DEEPCODEC_CORES", "4"))
-    vr = InterleavedVideoReader(video_path, num_threads=num_cores)
+    #num_cores = int(os.environ.get("DEEPCODEC_CORES", "4"))
+    vr = InterleavedVideoReader(video_path, num_threads=8, num_intervals=64)
     # TODO: support start_pts and end_pts
     if 'video_start' in ele or 'video_end' in ele:
         raise NotImplementedError("not support start_pts and end_pts in deepcodec for now.")
@@ -173,12 +173,13 @@ class QwenVideoReaderInterleaved:
         e = time.time()
         self.total_timing += e-s
 
-    def dummy_input(self):
+    def dummy_input(self, fps):
                 
         return {
             "video_grid_thw" : torch.tensor((self.nframes/2, self.vr.height / 14, self.vr.width / 14), dtype=torch.int64).unsqueeze(dim=0), 
             "second_per_grid_ts": -1,
-            "pixel_values_videos": None
+            "pixel_values_videos": None,
+            "fps" : fps
         }
         
     def dummy_video_inputs(self):
@@ -626,7 +627,8 @@ def dummy_call(
 
         video_grid_thw = video_in["video_grid_thw"]
 
-        fps = output_kwargs["videos_kwargs"].pop("fps", 2.0)
+        #fps = output_kwargs["videos_kwargs"].pop("fps", 2.0)
+        fps = video_in["fps"]
         if isinstance(fps, (int, float)):
             second_per_grid_ts = [self.image_processor.temporal_patch_size / fps] * len(video_grid_thw)
         elif hasattr(fps, "__len__") and len(fps) == len(video_grid_thw):

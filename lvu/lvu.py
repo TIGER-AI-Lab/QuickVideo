@@ -88,7 +88,7 @@ if __name__ == "__main__":
         prefill_prune_starting_layer=None,
         adaptive_local_attention=True,
         # num_frames=128,
-        fps=1,
+        fps=2,
         use_tqdm=True,
         # top_k_decay_type="linear",
         # top_k_decay_factor=0.33,

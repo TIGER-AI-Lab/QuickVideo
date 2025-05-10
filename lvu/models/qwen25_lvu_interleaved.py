@@ -474,7 +474,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         padding=True,
         return_tensors="pt",
         **vr.video_kwargs,
-        video_inputs = vr.dummy_input()
+        video_inputs = vr.dummy_input(lvu_config.fps)
     )
 
     e = time.time()

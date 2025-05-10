@@ -3,7 +3,7 @@ from deepcodec import VideoReader as DCVR
 import sys
 import numpy as np
 from scipy import stats
-from torchvision import transforms as T,
+from torchvision import transforms as T
 
 
 NUM_RUNS = 5  # Number of runs for averaging and confidence intervals

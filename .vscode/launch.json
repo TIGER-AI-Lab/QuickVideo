@@ -12,7 +12,8 @@
             ],
             "env": {
                 "CUDA_VISIBLE_DEVICES": "0",
-                "DEEPCODEC_CORES": "8"
+                "DEEPCODEC_CORES": "16",
+                "DEEPCODEC_DISABLED": "TRUE"
             },
             "justMyCode": false
         },

@@ -245,15 +245,39 @@ def _read_video_deepcodec(
     """
     from deepcodec import VideoReader as DCVideoReader
     video_path = ele["video"]
+    resize = ele.pop("resize")
+
     st = time.time()
     num_cores = int(os.environ.get("DEEPCODEC_CORES", "4"))
     vr = DCVideoReader(video_path, num_threads=num_cores)
+
+    total_frames, video_fps = len(vr), vr.get_fps()
+    nframes = smart_nframes(ele, total_frames=total_frames, video_fps=video_fps)
+
+    total_pixels = ele.get("total_pixels", VIDEO_TOTAL_PIXELS)
+    min_pixels = ele.get("min_pixels", VIDEO_MIN_PIXELS)
+    max_pixels = max(min(VIDEO_MAX_PIXELS, total_pixels / nframes * FRAME_FACTOR), int(min_pixels * 1.05))
+    max_pixels_supposed = ele.get("max_pixels", max_pixels)
+    if max_pixels_supposed > max_pixels:
+        logger.warning(f"The given max_pixels[{max_pixels_supposed}] exceeds limit[{max_pixels}].")
+    max_pixels = min(max_pixels_supposed, max_pixels)
+    
+    height, width = vr.height, vr.width
+    resized_height, resized_width = resize["fxn"](
+        height,
+        width,
+        factor=resize["image_factor"],
+        min_pixels=min_pixels,
+        max_pixels=max_pixels,
+    )
+    vr.height = resized_height
+    vr.width = resized_width
+    vr.interpolation = "LANCZOS"
+
     # TODO: support start_pts and end_pts
     if 'video_start' in ele or 'video_end' in ele:
         raise NotImplementedError("not support start_pts and end_pts in deepcodec for now.")
-    total_frames, video_fps = len(vr), vr.get_fps()
 
-    nframes = smart_nframes(ele, total_frames=total_frames, video_fps=video_fps)
     idx = torch.linspace(0, total_frames - 1, nframes).round().long().tolist()
     video = torch.from_numpy(vr.get_batch(idx))
     batch_end_time = time.time()
@@ -263,7 +287,7 @@ def _read_video_deepcodec(
     #video = torch.tensor(video).permute(0, 3, 1, 2)
     sample_fps = nframes / max(total_frames, 1e-6) * video_fps
 
-    return video.cuda(), sample_fps
+    return video, sample_fps
 
 VIDEO_READER_BACKENDS = {
     "deepcodec": _read_video_deepcodec,
@@ -271,9 +295,79 @@ VIDEO_READER_BACKENDS = {
     "torchvision": qwen_vl_utils.vision_process._read_video_torchvision,
 }
 
+def fetch_video(ele: dict, image_factor: int = IMAGE_FACTOR, return_video_sample_fps: bool = False) -> torch.Tensor | list[Image.Image]:
+    if isinstance(ele["video"], str):
+        
+        video_reader_backend = get_video_reader_backend()
+
+        if video_reader_backend == "deepcodec":
+            ele["resize"] = {
+                "fxn": smart_resize,
+                "image_factor": image_factor,
+                }
+
+        try:
+            video, sample_fps = VIDEO_READER_BACKENDS[video_reader_backend](ele)
+        except Exception as e:
+            logger.warning(f"video_reader_backend {video_reader_backend} error, use torchvision as default, msg: {e}")
+            video, sample_fps = VIDEO_READER_BACKENDS["torchvision"](ele)
+
+        nframes, _, height, width = video.shape
+        total_pixels = ele.get("total_pixels", VIDEO_TOTAL_PIXELS)
+        min_pixels = ele.get("min_pixels", VIDEO_MIN_PIXELS)
+        max_pixels = max(min(VIDEO_MAX_PIXELS, total_pixels / nframes * FRAME_FACTOR), int(min_pixels * 1.05))
+        max_pixels_supposed = ele.get("max_pixels", max_pixels)
+        if max_pixels_supposed > max_pixels:
+            logger.warning(f"The given max_pixels[{max_pixels_supposed}] exceeds limit[{max_pixels}].")
+        max_pixels = min(max_pixels_supposed, max_pixels)
+        if "resized_height" in ele and "resized_width" in ele:
+            resized_height, resized_width = smart_resize(
+                ele["resized_height"],
+                ele["resized_width"],
+                factor=image_factor,
+            )
+        elif video_reader_backend != "deepcodec":
+            resized_height, resized_width = smart_resize(
+                height,
+                width,
+                factor=image_factor,
+                min_pixels=min_pixels,
+                max_pixels=max_pixels,
+            )
+
+        # deepcodec already handles resizing
+        if video_reader_backend == "deepcodec":
+            video = video.float()
+        else:
+            video = transforms.functional.resize(
+                video,
+                [resized_height, resized_width],
+                interpolation=InterpolationMode.BICUBIC,
+                antialias=True,
+            ).float()
+        if return_video_sample_fps:
+            return video, sample_fps
+        return video
+    else:
+        assert isinstance(ele["video"], (list, tuple))
+        process_info = ele.copy()
+        process_info.pop("type", None)
+        process_info.pop("video", None)
+        images = [
+            fetch_image({"image": video_element, **process_info}, size_factor=image_factor)
+            for video_element in ele["video"]
+        ]
+        nframes = ceil_by_factor(len(images), FRAME_FACTOR)
+        if len(images) < nframes:
+            images.extend([images[-1]] * (nframes - len(images)))
+        if return_video_sample_fps:
+            return images, process_info.pop("fps", 2.0)
+        return images
+
+
 sys.modules["qwen_vl_utils.vision_process"].get_video_reader_backend = get_video_reader_backend
 sys.modules["qwen_vl_utils.vision_process"].VIDEO_READER_BACKENDS = VIDEO_READER_BACKENDS
-
+sys.modules["qwen_vl_utils.vision_process"].fetch_video = fetch_video
 FPS_MAX_FRAMES = 100_000 # 768 = 256 * 3
 
 def smart_nframes(
@@ -587,12 +681,14 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     
     cache_enable = lvu_config.enable
     lvu_config.enable = lvu_config.do_top_k_for_query # determine whether to do topk or not
+    decoding_start = time.time()
     generated_ids = model.generate(**final_inputs, **generation_kwargs)
+    decoding_end = time.time()
     lvu_config.enable = cache_enable
     
     print(f"total time spent fetching frames was: {video_processing_time}")
     print(f"total time spent on prefill was: {total_prefill}")
-    print(f"Time spent decoding was not measured")
+    print(f"Time spent decoding was {decoding_end-decoding_start}")
 
     generated_ids_trimmed = [
         out_ids[len(in_ids) :] for in_ids, out_ids in zip(final_inputs.input_ids, generated_ids)

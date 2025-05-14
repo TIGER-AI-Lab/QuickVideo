@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import dataclasses
 import time
+import sys
 import hashlib
 from pathlib import Path
 from tqdm import tqdm
@@ -18,6 +19,10 @@ from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
     repeat_kv,
     _flash_attention_forward,
 )
+
+import qwen_vl_utils.vision_process
+from qwen_vl_utils.vision_process import *
+FPS_MAX_FRAMES = 100_000 # originally: 768 = 256 * 3
 
 def lvu_qwen25_vl_flash_attention_2_forward(
     self,
@@ -204,10 +209,6 @@ def lvu_qwen25_vl_decoder_layer_forward(
 
     return outputs
 
-
-import qwen_vl_utils.vision_process
-from qwen_vl_utils.vision_process import *
-import sys
 
 def _read_video_decord_cpu(
     ele: dict,
@@ -397,11 +398,6 @@ def fetch_video(ele: dict, image_factor: int = IMAGE_FACTOR, return_video_sample
         return images
 
 
-sys.modules["qwen_vl_utils.vision_process"].get_video_reader_backend = get_video_reader_backend
-sys.modules["qwen_vl_utils.vision_process"].VIDEO_READER_BACKENDS = VIDEO_READER_BACKENDS
-sys.modules["qwen_vl_utils.vision_process"].fetch_video = fetch_video
-FPS_MAX_FRAMES = 100_000 # 768 = 256 * 3
-
 def smart_nframes(
     ele: dict,
     total_frames: int,
@@ -442,8 +438,6 @@ def smart_nframes(
     if not (FRAME_FACTOR <= nframes and nframes <= total_frames):
         raise ValueError(f"nframes should in interval [{FRAME_FACTOR}, {total_frames}], but got {nframes}.")
     return nframes
-
-sys.modules["qwen_vl_utils.vision_process"].smart_nframes = smart_nframes
 
 def _get_initial_cache_position(self, input_ids, model_kwargs):
     if "cache_position" in model_kwargs:
@@ -546,6 +540,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     )
     
     start = time.time()
+    e2e_start = time.time()
     cache_dir = lvu_config.cache_dir or "~/.cache/video_cache/qwen25_vl"
     vision_info = extract_vision_info(messages)
     assert len(vision_info) == 1, "Only one video is supported for now."
@@ -578,6 +573,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     end = time.time()
     video_processing_time = end - start
     
+    processor_start = time.time()
     whole_inputs = processor(
         text=text,
         images=image_inputs,
@@ -586,6 +582,8 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         return_tensors="pt",
         **video_kwargs,
     )
+    processor_end = time.time()
+    processor_time = processor_end - processor_start
 
     whole_inputs = whole_inputs.to(model.device)
     n_video_tokens = (whole_inputs['input_ids'] == model.config.video_token_id).sum().item()
@@ -603,6 +601,9 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     
     assert len(video_inputs) <= 1, "Only one video is supported for now."
     video_group_size = lvu_config.video_group_size
+    temporal_patch_size = processor.image_processor.temporal_patch_size
+    if not video_group_size % temporal_patch_size == 0:
+        video_group_size += temporal_patch_size - (video_group_size % temporal_patch_size)
     if video_group_size is not None and video_group_size > 0:
         video_groups = video_inputs[0].split(video_group_size)
         assert all(len(group) % 2 == 0 for group in video_groups), "The video group size should be even."
@@ -612,7 +613,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         for group in video_groups:
             video_groups_grid_thw.append(
                 torch.tensor(
-                    [int(video_grid_thw[0] * (len(group) / len(video_inputs[0]))),
+                    [len(group) // temporal_patch_size,
                     video_grid_thw[1],
                     video_grid_thw[2]]
                 ).unsqueeze(0)
@@ -646,6 +647,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     total_prefill = 0
 
     # start processing the video groups
+    print(f"Processing total of {len(video_groups)} video groups, each with {video_group_size} frames.")
     for i, pixel_values_videos_groups_i in tqdm(enumerate(pixel_values_videos_groups), 
         desc="Processing video groups", total=len(pixel_values_videos_groups), disable=not lvu_config.use_tqdm):
         
@@ -669,9 +671,6 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         group_i_inputs = group_i_inputs.to(model.device)
         group_i_inputs['use_cache'] = True
         
-        for k, v in group_i_inputs.items():
-            if isinstance(v, torch.Tensor):
-                print(f"key: {k}, shape: {v.shape}")
         if lvu_config.adaptive_local_attention:
             group_i_inputs['past_key_values'] = past_key_values
             with torch.no_grad():
@@ -722,9 +721,16 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     decoding_end = time.time()
     lvu_config.enable = cache_enable
     
+    e2e_end = time.time()
+    e2e_time = e2e_end - e2e_start
+    decoding_time = decoding_end - decoding_start
+    
     print(f"total time spent fetching frames was: {video_processing_time}")
+    print(f"total time spent on processor was: {processor_time}")
     print(f"total time spent on prefill was: {total_prefill}")
-    print(f"Time spent decoding was {decoding_end-decoding_start}")
+    print(f"total time spent on e2e fetching and decoding was: {e2e_time}")
+    print(f"total time spent on decoding was: {decoding_time}")
+    print(f"Time saved by interleaved processing was: {video_processing_time + processor_time + total_prefill + decoding_time - e2e_time}")
 
     generated_ids_trimmed = [
         out_ids[len(in_ids) :] for in_ids, out_ids in zip(final_inputs.input_ids, generated_ids)
@@ -734,3 +740,8 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     )
     return output_text
     
+
+sys.modules["qwen_vl_utils.vision_process"].get_video_reader_backend = get_video_reader_backend
+sys.modules["qwen_vl_utils.vision_process"].VIDEO_READER_BACKENDS = VIDEO_READER_BACKENDS
+sys.modules["qwen_vl_utils.vision_process"].fetch_video = fetch_video
+sys.modules["qwen_vl_utils.vision_process"].smart_nframes = smart_nframes

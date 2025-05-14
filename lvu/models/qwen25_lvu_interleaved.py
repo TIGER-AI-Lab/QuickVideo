@@ -3,14 +3,24 @@ import numpy as np
 import dataclasses
 import time
 import hashlib
+import random
+import math
+import time
+import sys
+import types
+import threading
+import numpy as np
+import os
+from PIL import Image
+from queue import Queue
 from pathlib import Path
 from tqdm import tqdm
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLModel
 from transformers.feature_extraction_utils import BatchFeature
 from transformers.cache_utils import Cache
 from qwen_vl_utils import process_vision_info, extract_vision_info
-from ..utils import post_process_kv_cache, QwenVideoReaderInterleaved, dummy_call
+from ..utils import post_process_kv_cache
 from ..lvu_config import LVUConfig, LVULayerConfig
 from ..lvu_cache import LVUCache
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
@@ -18,7 +28,12 @@ from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
     repeat_kv,
     _flash_attention_forward,
 )
-import types
+from transformers.models.qwen2_5_vl.processing_qwen2_5_vl import Qwen2_5_VLProcessorKwargs, BatchFeature
+
+import qwen_vl_utils.vision_process
+from qwen_vl_utils.vision_process import *
+from deepcodec import InterleavedVideoReader
+FPS_MAX_FRAMES = 100_000 # originally: 768 = 256 * 3
 
 def lvu_qwen25_vl_flash_attention_2_forward(
     self,
@@ -206,49 +221,424 @@ def lvu_qwen25_vl_decoder_layer_forward(
     return outputs
 
 
+def save_image_to_home(img_array: torch.Tensor, filename: str = "img/output.png"):
+    # Ensure shape is (H, W, 3)
+    img = np.transpose(img_array.cpu().numpy(), (1, 2, 0))
 
-# def smart_nframes(
-#     ele: dict,
-#     total_frames: int,
-#     video_fps: int | float,
-# ) -> int:
-#     """calculate the number of frames for video used for model inputs.
+    if img.dtype != np.uint8:
+        img = np.clip(img, 0, 1) if img.max() <= 1.0 else np.clip(img, 0, 255)
+        img = (img * 255).astype(np.uint8) if img.max() <= 1.0 else img.astype(np.uint8)
 
-#     Args:
-#         ele (dict): a dict contains the configuration of video.
-#             support either `fps` or `nframes`:
-#                 - nframes: the number of frames to extract for model inputs.
-#                 - fps: the fps to extract frames for model inputs.
-#                     - min_frames: the minimum number of frames of the video, only used when fps is provided.
-#                     - max_frames: the maximum number of frames of the video, only used when fps is provided.
-#         total_frames (int): the original total number of frames of the video.
-#         video_fps (int | float): the original fps of the video.
+    pil_img = Image.fromarray(img)
+    # Get home directory
+    home_path = os.path.expanduser("~")
+    # Save image
+    save_path = os.path.join(home_path, filename)
+    pil_img.save(save_path)
+    print(f"Image saved to {save_path}")
 
-#     Raises:
-#         ValueError: nframes should in interval [FRAME_FACTOR, total_frames].
 
-#     Returns:
-#         int: the number of frames for video used for model inputs.
-#     """
-#     assert not ("fps" in ele and "nframes" in ele), "Only accept either `fps` or `nframes`"
-#     if "nframes" in ele:
-#         nframes = round_by_factor(ele["nframes"], FRAME_FACTOR)
-#         nframes = min(nframes, total_frames)
-#         nframes -= (nframes % FRAME_FACTOR)
-#     else:
-#         fps = ele.get("fps", FPS)
-#         min_frames = ceil_by_factor(ele.get("min_frames", FPS_MIN_FRAMES), FRAME_FACTOR)
-#         max_frames = floor_by_factor(ele.get("max_frames", min(FPS_MAX_FRAMES, total_frames)), FRAME_FACTOR)
-#         nframes = total_frames / video_fps * fps
-#         if nframes > total_frames:
-#             logger.warning(f"smart_nframes: nframes[{nframes}] > total_frames[{total_frames}]")
-#         nframes = min(min(max(nframes, min_frames), max_frames), total_frames)
-#         nframes = floor_by_factor(nframes, FRAME_FACTOR)
-#     if not (FRAME_FACTOR <= nframes and nframes <= total_frames):
-#         raise ValueError(f"nframes should in interval [{FRAME_FACTOR}, {total_frames}], but got {nframes}.")
-#     return nframes
+class PixelIterator:
 
-# sys.modules["qwen_vl_utils.vision_process"].smart_nframes = smart_nframes
+    def __init__(self,qwen_vr, vr, frames_per_block,video_kwargs, processor):
+
+        self.qwen_vr = qwen_vr
+        self.iterations = 0
+        self.frames_per_block = frames_per_block
+        self.vr = vr
+        self.processor = processor
+        self.video_kwargs = video_kwargs
+        self.processor_timing = 0
+
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+
+        s = time.time()
+        frames = torch.from_numpy(next(self.vr)).float()
+        e = time.time()
+        self.qwen_vr.total_timing += e-s
+        s = time.time()
+        #save_image_to_home(frames[8], f"img/{self.iterations}.png")
+        pixels = self.processor(
+            text="a",
+            images=[],
+            videos=[frames],
+            padding=True,
+            return_tensors="pt",
+            **self.video_kwargs,
+        )['pixel_values_videos']
+        self.iterations += 1
+        e = time.time()
+        self.processor_timing += e - s
+        return pixels
+
+
+
+class AsyncPixelIterator(PixelIterator):
+    def __init__(self, qwen_vr, vr, frames_per_block, video_kwargs, processor, buffer_size=3):
+        super().__init__(qwen_vr, vr, frames_per_block, video_kwargs, processor)
+        # Threading components
+        self.buffer = Queue(maxsize=buffer_size)
+        self.is_finished = False
+        self.worker_thread = None
+        self.exception = None
+        
+    def __iter__(self):
+        # Start the background worker thread
+        self.worker_thread = threading.Thread(target=self._background_worker, daemon=True)
+        self.worker_thread.start()
+        return self
+    
+    def __next__(self):
+        # Get the next processed frame from the buffer
+        while True:
+            if self.exception:
+                raise self.exception
+            
+            if not self.buffer.empty():
+                return self.buffer.get()
+            
+            if self.is_finished and self.buffer.empty():
+                raise StopIteration
+            
+            # Wait a bit before checking again
+            time.sleep(0.01)
+    
+    def _background_worker(self):
+        """Background thread that continuously processes frames"""
+        try:
+            while True:
+                # Process the next frame
+                pixels = self._process_frame()
+                if pixels is None:
+                    break
+                self.buffer.put(pixels)
+        except StopIteration:
+            self.is_finished = True
+        except Exception as e:
+            self.exception = e
+            self.is_finished = True
+    
+    def _process_frame(self):
+        """Process a single frame"""
+        try:
+            s = time.time()
+            
+            # Get the next frame
+            frames = torch.from_numpy(next(self.vr)).float()
+            e = time.time()
+            self.qwen_vr.total_timing += e - s
+            #save_image_to_home(frames[8], f"img/{self.iterations}.png")
+            s = time.time()
+            # Process the frame
+            pixels = self.processor(
+                text="a",
+                images=[],
+                videos=[frames],
+                padding=True,
+                return_tensors="pt",
+                **self.video_kwargs,
+            )['pixel_values_videos']
+            self.iterations += 1
+            e = time.time()
+            self.processor_timing += e - s
+            return pixels
+        except StopIteration:
+            raise
+
+def smart_nframes(
+    ele: dict,
+    total_frames: int,
+    video_fps: int | float,
+) -> int:
+    """calculate the number of frames for video used for model inputs.
+
+    Args:
+        ele (dict): a dict contains the configuration of video.
+            support either `fps` or `nframes`:
+                - nframes: the number of frames to extract for model inputs.
+                - fps: the fps to extract frames for model inputs.
+                    - min_frames: the minimum number of frames of the video, only used when fps is provided.
+                    - max_frames: the maximum number of frames of the video, only used when fps is provided.
+        total_frames (int): the original total number of frames of the video.
+        video_fps (int | float): the original fps of the video.
+
+    Raises:
+        ValueError: nframes should in interval [FRAME_FACTOR, total_frames].
+
+    Returns:
+        int: the number of frames for video used for model inputs.
+    """
+    assert not ("fps" in ele and "nframes" in ele), "Only accept either `fps` or `nframes`"
+    if "nframes" in ele:
+        nframes = round_by_factor(ele["nframes"], FRAME_FACTOR)
+        nframes = min(nframes, total_frames)
+        nframes -= (nframes % FRAME_FACTOR)
+    else:
+        fps = ele.get("fps", FPS)
+        min_frames = ceil_by_factor(ele.get("min_frames", FPS_MIN_FRAMES), FRAME_FACTOR)
+        max_frames = floor_by_factor(ele.get("max_frames", min(FPS_MAX_FRAMES, total_frames)), FRAME_FACTOR)
+        nframes = total_frames / video_fps * fps
+        if nframes > total_frames:
+            logger.warning(f"smart_nframes: nframes[{nframes}] > total_frames[{total_frames}]")
+        nframes = min(min(max(nframes, min_frames), max_frames), total_frames)
+        nframes = floor_by_factor(nframes, FRAME_FACTOR)
+    if not (FRAME_FACTOR <= nframes and nframes <= total_frames):
+        raise ValueError(f"nframes should in interval [{FRAME_FACTOR}, {total_frames}], but got {nframes}.")
+    return nframes
+
+def _read_video_interleaved(
+    ele: dict,
+):
+    
+    video_path = ele["video"]
+    #num_cores = int(os.environ.get("DEEPCODEC_CORES", "4"))
+    vr = InterleavedVideoReader(video_path, num_threads=8, num_intervals=64)
+    # TODO: support start_pts and end_pts
+    if 'video_start' in ele or 'video_end' in ele:
+        raise NotImplementedError("not support start_pts and end_pts in deepcodec for now.")
+    total_frames, video_fps = len(vr), vr.get_fps()
+
+    nframes = smart_nframes(ele, total_frames=total_frames, video_fps=video_fps)
+    idx = torch.linspace(0, total_frames - 1, nframes).round().long().tolist()
+    #video = torch.from_numpy(vr.get_batch(idx))
+
+    sample_fps = nframes / max(total_frames, 1e-6) * video_fps
+
+    return vr,idx, sample_fps
+
+def fetch_video(ele: dict, image_factor: int = IMAGE_FACTOR, return_video_sample_fps: bool = False) -> torch.Tensor | list[Image.Image]:
+    if isinstance(ele["video"], str):
+        vr, idx, sample_fps = _read_video_interleaved(ele)
+        nframes, height, width = len(idx), vr.height, vr.width
+        min_pixels = ele.get("min_pixels", VIDEO_MIN_PIXELS)
+        total_pixels = ele.get("total_pixels", VIDEO_TOTAL_PIXELS)
+        max_pixels = max(min(VIDEO_MAX_PIXELS, total_pixels / nframes * FRAME_FACTOR), int(min_pixels * 1.05))
+        max_pixels_supposed = ele.get("max_pixels", max_pixels)
+        if max_pixels_supposed > max_pixels:
+            logger.warning(f"The given max_pixels[{max_pixels_supposed}] exceeds limit[{max_pixels}].")
+        max_pixels = min(max_pixels_supposed, max_pixels)
+        if "resized_height" in ele and "resized_width" in ele:
+            resized_height, resized_width = smart_resize(
+                ele["resized_height"],
+                ele["resized_width"],
+                factor=image_factor,
+            )
+        else:
+            resized_height, resized_width = smart_resize(
+                height,
+                width,
+                factor=image_factor,
+                min_pixels=min_pixels,
+                max_pixels=max_pixels,
+            )
+        
+        vr.height = resized_height
+        vr.width = resized_width
+        vr.interpolation = "LANCZOS"
+        #vr.interpolation = "BICUBIC"
+        vr.process(idx)
+
+        if return_video_sample_fps:
+            return vr, sample_fps, nframes
+        return vr
+    else:
+        raise NotImplementedError
+
+
+def process_vision_info(
+    conversations: list[dict] | list[list[dict]],
+    return_video_kwargs: bool = False,
+) -> tuple[list[Image.Image] | None, list[torch.Tensor | list[Image.Image]] | None, Optional[dict]]:
+
+    vision_infos = extract_vision_info(conversations)
+    ## Read images or videos
+    image_inputs = []
+    video_inputs = []
+    video_sample_fps_list = []
+    for vision_info in vision_infos:
+        if "image" in vision_info or "image_url" in vision_info:
+            raise Exception("NotImplementedError")
+        elif "video" in vision_info:
+            video_input, video_sample_fps, nframes = fetch_video(vision_info, return_video_sample_fps=True)
+            video_sample_fps_list.append(video_sample_fps)
+            video_inputs.append(video_input)
+        else:
+            raise ValueError("image, image_url or video should in content.")
+    if len(image_inputs) == 0:
+        image_inputs = None
+    if len(video_inputs) == 0:
+        video_inputs = None
+    if return_video_kwargs:
+        return image_inputs, video_inputs[0], {'fps': video_sample_fps_list}, nframes
+    return image_inputs, video_inputs[0]
+
+class QwenVideoReaderInterleaved:
+
+    def __init__(self, path, threads, intervals, processor):
+        self.total_timing = 0
+        self.path = path
+        self.frames_per_block = None
+        self.batch = None
+        self.processor = processor
+        self.threads = threads
+        self.intervals = intervals
+        
+    def process(self, conv):
+
+        # conv = [{
+        #     "role": "user",
+        #     "content": [{"type": "video", "video": str(self.path), "max_pixels": math.inf, "fps": 2}]
+        # }]
+        s = time.time()        
+        self.image_inputs, self.vr,  self.video_kwargs, self.nframes = process_vision_info(conv, return_video_kwargs=True)
+        e = time.time()
+        self.total_timing += e-s
+
+    def dummy_input(self, fps):
+                
+        return {
+            "video_grid_thw" : torch.tensor((
+                self.nframes / self.processor.image_processor.temporal_patch_size,
+                self.vr.height / self.processor.image_processor.patch_size,
+                self.vr.width / self.processor.image_processor.patch_size
+            ), dtype=torch.int64).unsqueeze(dim=0), 
+            "second_per_grid_ts": -1,
+            "pixel_values_videos": None,
+            "fps" : fps
+        }
+        
+    def dummy_video_inputs(self):
+        return [torch.empty((self.nframes, 3, self.vr.height, self.vr.width), dtype=torch.float32)]
+
+    def set_frames_per_block(self, num_frames):
+        self.vr.frame_iter = num_frames
+        self.frames_per_block = num_frames
+
+
+    def get_pixel_iterator(self):
+        # return PixelIterator(self, self.vr, self.frames_per_block,self.video_kwargs, self.processor)
+        return AsyncPixelIterator(self, self.vr, self.frames_per_block,self.video_kwargs, self.processor)
+
+def dummy_call(
+    self,
+    images = None,
+    text = None,
+    videos = None,
+    **kwargs,
+):
+    """
+    Main method to prepare for the model one or several sequences(s) and image(s). This method forwards the `text`
+    and `kwargs` arguments to Qwen2TokenizerFast's [`~Qwen2TokenizerFast.__call__`] if `text` is not `None` to encode
+    the text. To prepare the vision inputs, this method forwards the `vision_infos` and `kwrags` arguments to
+    Qwen2VLImageProcessor's [`~Qwen2VLImageProcessor.__call__`] if `vision_infos` is not `None`.
+
+    Args:
+        images (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, `List[PIL.Image.Image]`, `List[np.ndarray]`, `List[torch.Tensor]`):
+            The image or batch of images to be prepared. Each image can be a PIL image, NumPy array or PyTorch
+            tensor. Both channels-first and channels-last formats are supported.
+        text (`str`, `List[str]`, `List[List[str]]`):
+            The sequence or batch of sequences to be encoded. Each sequence can be a string or a list of strings
+            (pretokenized string). If the sequences are provided as list of strings (pretokenized), you must set
+            `is_split_into_words=True` (to lift the ambiguity with a batch of sequences).
+        videos (`np.ndarray`, `torch.Tensor`, `List[np.ndarray]`, `List[torch.Tensor]`):
+            The image or batch of videos to be prepared. Each video can be a 4D NumPy array or PyTorch
+            tensor, or a nested list of 3D frames. Both channels-first and channels-last formats are supported.
+        return_tensors (`str` or [`~utils.TensorType`], *optional*):
+            If set, will return tensors of a particular framework. Acceptable values are:
+            - `'tf'`: Return TensorFlow `tf.constant` objects.
+            - `'pt'`: Return PyTorch `torch.Tensor` objects.
+            - `'np'`: Return NumPy `np.ndarray` objects.
+            - `'jax'`: Return JAX `jnp.ndarray` objects.
+
+    Returns:
+        [`BatchFeature`]: A [`BatchFeature`] with the following fields:
+
+        - **input_ids** -- List of token ids to be fed to a model. Returned when `text` is not `None`.
+        - **attention_mask** -- List of indices specifying which tokens should be attended to by the model (when
+            `return_attention_mask=True` or if *"attention_mask"* is in `self.model_input_names` and if `text` is not
+            `None`).
+        - **pixel_values** -- Pixel values to be fed to a model. Returned when `images` is not `None`.
+        - **pixel_values_videos** -- Pixel values of videos to be fed to a model. Returned when `videos` is not `None`.
+        - **image_grid_thw** -- List of image 3D grid in LLM. Returned when `images` is not `None`.
+        - **video_grid_thw** -- List of video 3D grid in LLM. Returned when `videos` is not `None`.
+        - **second_per_grid_ts** -- List of video seconds per time grid. Returned when `videos` is not `None`.
+    """
+    video_in = kwargs.pop("video_inputs")
+
+
+    output_kwargs = self._merge_kwargs(
+        Qwen2_5_VLProcessorKwargs,
+        tokenizer_init_kwargs=self.tokenizer.init_kwargs,
+        **kwargs,
+    )
+    if images is not None:
+        image_inputs = self.image_processor(images=images, videos=None, **output_kwargs["images_kwargs"])
+        image_grid_thw = image_inputs["image_grid_thw"]
+    else:
+        image_inputs = {}
+        image_grid_thw = None
+
+    if videos is not None:
+        
+        videos_inputs = {
+            "video_grid_thw" : video_in["video_grid_thw"],
+            "second_per_grid_ts": -1,
+            "pixel_values_videos": None
+        }        
+
+        video_grid_thw = video_in["video_grid_thw"]
+
+        #fps = output_kwargs["videos_kwargs"].pop("fps", 2.0)
+        fps = video_in["fps"]
+        if isinstance(fps, (int, float)):
+            second_per_grid_ts = [self.image_processor.temporal_patch_size / fps] * len(video_grid_thw)
+        elif hasattr(fps, "__len__") and len(fps) == len(video_grid_thw):
+            second_per_grid_ts = [self.image_processor.temporal_patch_size / tmp for tmp in fps]
+        else:
+            raise ValueError(
+                f"The length of fps ({len(fps) if hasattr(fps, '__len__') else fps}) must be equal to the length of video_grid_thw ({len(video_grid_thw)}) or fps should be a single number."
+            )
+        videos_inputs.update({"second_per_grid_ts": second_per_grid_ts})
+
+    else:
+        videos_inputs = {}
+        video_grid_thw = None
+
+    if not isinstance(text, list):
+        text = [text]
+
+    if image_grid_thw is not None:
+        merge_length = self.image_processor.merge_size**2
+        index = 0
+        for i in range(len(text)):
+            while self.image_token in text[i]:
+                text[i] = text[i].replace(
+                    self.image_token,
+                    "<|placeholder|>" * (image_grid_thw[index].prod() // merge_length),
+                    1,
+                )
+                index += 1
+            text[i] = text[i].replace("<|placeholder|>", self.image_token)
+
+    if video_grid_thw is not None:
+        merge_length = self.image_processor.merge_size**2
+        index = 0
+        for i in range(len(text)):
+            while self.video_token in text[i]:
+                text[i] = text[i].replace(
+                    self.video_token,
+                    "<|placeholder|>" * (video_grid_thw[index].prod() // merge_length),
+                    1,
+                )
+                index += 1
+            text[i] = text[i].replace("<|placeholder|>", self.video_token)
+
+    text_inputs = self.tokenizer(text, **output_kwargs["text_kwargs"])
+
+    return BatchFeature(data={**text_inputs, **image_inputs, **videos_inputs})
 
 def _get_initial_cache_position(self, input_ids, model_kwargs):
     if "cache_position" in model_kwargs:
@@ -363,11 +753,10 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     cache_dir = Path(cache_dir).expanduser()
     cache_file = cache_dir / f"{cache_key}.pt"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    if not cache_file.exists():        
+    if not cache_file.exists() or False:        
         # Interleaved processing
-        #image_inputs, video_inputs, video_kwargs = process_vision_info(messages, return_video_kwargs=True)
         vr = QwenVideoReaderInterleaved(video_path,16,32,processor)
-        vr.process()
+        vr.process(messages)
 
         # used for finding correct shapes of blocks
         # I think only time dim is needed ~ can probably remove other dims
@@ -419,8 +808,11 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     )
     model.rope_deltas = rope_deltas
     
-    #assert len(video_inputs) <= 1, "Only one video is supported for now."
+    assert len(video_inputs) <= 1, "Only one video is supported for now."
     video_group_size = lvu_config.video_group_size
+    temporal_patch_size = processor.image_processor.temporal_patch_size
+    if not video_group_size % temporal_patch_size == 0:
+        video_group_size += temporal_patch_size - (video_group_size % temporal_patch_size)
     if video_group_size is not None and video_group_size > 0:
         video_groups = video_inputs[0].split(video_group_size)
         assert all(len(group) % 2 == 0 for group in video_groups), "The video group size should be even."
@@ -430,7 +822,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         for group in video_groups:
             video_groups_grid_thw.append(
                 torch.tensor(
-                    [int(video_grid_thw[0] * (len(group) / len(video_inputs[0]))),
+                    [len(group) // temporal_patch_size,
                     video_grid_thw[1],
                     video_grid_thw[2]]
                 ).unsqueeze(0)
@@ -507,8 +899,6 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         # reset prompt length as all video groups are processed
         past_key_values.set_prompt_length(0)
     # end of processing the video groups
-    e2e_end = time.time()
-    e2e_time = e2e_end - e2e_start
     start_of_decoding = time.time()
 
     final_inputs = {
@@ -528,15 +918,18 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     lvu_config.enable = lvu_config.do_top_k_for_query # determine whether to do topk or not
     generated_ids = model.generate(**final_inputs, **generation_kwargs)
     lvu_config.enable = cache_enable
-    
     end_of_decoding = time.time()
+    decoding_time = end_of_decoding - start_of_decoding
+    
+    e2e_end = time.time()
+    e2e_time = e2e_end - e2e_start
 
     print(f"total time spent fetching frames was: {vr.total_timing}")
     print(f"total time spent on processor was: {pixel_iter.processor_timing}")
     print(f"total time spent on prefill was: {total_prefill_time}")
     print(f"total time spent on e2e fetching and decoding was: {e2e_time}")
-    print(f"Time saved by interleaved processing was: {vr.total_timing + pixel_iter.processor_timing + total_prefill_time - e2e_time}")
-    print(f"Time spent decoding was: {end_of_decoding-start_of_decoding}")
+    print(f"total time spent on decoding was: {decoding_time}")
+    print(f"Time saved by interleaved processing was: {vr.total_timing + pixel_iter.processor_timing + total_prefill_time + decoding_time - e2e_time}")
 
     generated_ids_trimmed = [
         out_ids[len(in_ids) :] for in_ids, out_ids in zip(final_inputs.input_ids, generated_ids)
@@ -546,3 +939,4 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     )
     return output_text
     
+sys.modules["qwen_vl_utils.vision_process"].smart_nframes = smart_nframes

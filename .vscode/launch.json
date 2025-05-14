@@ -1,0 +1,52 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "lvu.lvu",
+            "console": "integratedTerminal",
+            "args": [
+                "qwen25_lvu"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0",
+                "DEEPCODEC_CORES": "16",
+                "DEEPCODEC_DISABLED": "TRUE"
+            },
+            "justMyCode": false
+        },
+        {
+            "name": "Debug_Interleaved",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "lvu.lvu",
+            "console": "integratedTerminal",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0",
+                "DEEPCODEC_CORES": "8"
+            },
+            "args": [
+                "qwen25_lvu_interleaved"
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "Debug (deepcodec off)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "lvu.lvu",
+            "console": "integratedTerminal",
+            "args": [
+                "qwen25_lvu"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0",
+                "DEEPCODEC_CORES": "8",
+                "DEEPCODEC_DISABLED": "TRUE"
+            },
+            "justMyCode": false
+        },
+    ]
+}

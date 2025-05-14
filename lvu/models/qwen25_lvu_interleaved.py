@@ -10,7 +10,7 @@ from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLModel
 from transformers.feature_extraction_utils import BatchFeature
 from transformers.cache_utils import Cache
 from qwen_vl_utils import process_vision_info, extract_vision_info
-from ..utils import post_process_kv_cache
+from ..utils import post_process_kv_cache, QwenVideoReaderInterleaved, dummy_call
 from ..lvu_config import LVUConfig, LVULayerConfig
 from ..lvu_cache import LVUCache
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
@@ -18,6 +18,7 @@ from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
     repeat_kv,
     _flash_attention_forward,
 )
+import types
 
 def lvu_qwen25_vl_flash_attention_2_forward(
     self,
@@ -204,51 +205,50 @@ def lvu_qwen25_vl_decoder_layer_forward(
 
     return outputs
 
-import qwen_vl_utils.vision_process
-from qwen_vl_utils.vision_process import *
-import sys
-FPS_MAX_FRAMES = 100_000 # 768 = 256 * 3
-def smart_nframes(
-    ele: dict,
-    total_frames: int,
-    video_fps: int | float,
-) -> int:
-    """calculate the number of frames for video used for model inputs.
 
-    Args:
-        ele (dict): a dict contains the configuration of video.
-            support either `fps` or `nframes`:
-                - nframes: the number of frames to extract for model inputs.
-                - fps: the fps to extract frames for model inputs.
-                    - min_frames: the minimum number of frames of the video, only used when fps is provided.
-                    - max_frames: the maximum number of frames of the video, only used when fps is provided.
-        total_frames (int): the original total number of frames of the video.
-        video_fps (int | float): the original fps of the video.
 
-    Raises:
-        ValueError: nframes should in interval [FRAME_FACTOR, total_frames].
+# def smart_nframes(
+#     ele: dict,
+#     total_frames: int,
+#     video_fps: int | float,
+# ) -> int:
+#     """calculate the number of frames for video used for model inputs.
 
-    Returns:
-        int: the number of frames for video used for model inputs.
-    """
-    assert not ("fps" in ele and "nframes" in ele), "Only accept either `fps` or `nframes`"
-    if "nframes" in ele:
-        nframes = round_by_factor(ele["nframes"], FRAME_FACTOR)
-        nframes = min(nframes, total_frames)
-        nframes -= (nframes % FRAME_FACTOR)
-    else:
-        fps = ele.get("fps", FPS)
-        min_frames = ceil_by_factor(ele.get("min_frames", FPS_MIN_FRAMES), FRAME_FACTOR)
-        max_frames = floor_by_factor(ele.get("max_frames", min(FPS_MAX_FRAMES, total_frames)), FRAME_FACTOR)
-        nframes = total_frames / video_fps * fps
-        if nframes > total_frames:
-            logger.warning(f"smart_nframes: nframes[{nframes}] > total_frames[{total_frames}]")
-        nframes = min(min(max(nframes, min_frames), max_frames), total_frames)
-        nframes = floor_by_factor(nframes, FRAME_FACTOR)
-    if not (FRAME_FACTOR <= nframes and nframes <= total_frames):
-        raise ValueError(f"nframes should in interval [{FRAME_FACTOR}, {total_frames}], but got {nframes}.")
-    return nframes
-#sys.modules["qwen_vl_utils.vision_process"].smart_nframes = smart_nframes
+#     Args:
+#         ele (dict): a dict contains the configuration of video.
+#             support either `fps` or `nframes`:
+#                 - nframes: the number of frames to extract for model inputs.
+#                 - fps: the fps to extract frames for model inputs.
+#                     - min_frames: the minimum number of frames of the video, only used when fps is provided.
+#                     - max_frames: the maximum number of frames of the video, only used when fps is provided.
+#         total_frames (int): the original total number of frames of the video.
+#         video_fps (int | float): the original fps of the video.
+
+#     Raises:
+#         ValueError: nframes should in interval [FRAME_FACTOR, total_frames].
+
+#     Returns:
+#         int: the number of frames for video used for model inputs.
+#     """
+#     assert not ("fps" in ele and "nframes" in ele), "Only accept either `fps` or `nframes`"
+#     if "nframes" in ele:
+#         nframes = round_by_factor(ele["nframes"], FRAME_FACTOR)
+#         nframes = min(nframes, total_frames)
+#         nframes -= (nframes % FRAME_FACTOR)
+#     else:
+#         fps = ele.get("fps", FPS)
+#         min_frames = ceil_by_factor(ele.get("min_frames", FPS_MIN_FRAMES), FRAME_FACTOR)
+#         max_frames = floor_by_factor(ele.get("max_frames", min(FPS_MAX_FRAMES, total_frames)), FRAME_FACTOR)
+#         nframes = total_frames / video_fps * fps
+#         if nframes > total_frames:
+#             logger.warning(f"smart_nframes: nframes[{nframes}] > total_frames[{total_frames}]")
+#         nframes = min(min(max(nframes, min_frames), max_frames), total_frames)
+#         nframes = floor_by_factor(nframes, FRAME_FACTOR)
+#     if not (FRAME_FACTOR <= nframes and nframes <= total_frames):
+#         raise ValueError(f"nframes should in interval [{FRAME_FACTOR}, {total_frames}], but got {nframes}.")
+#     return nframes
+
+# sys.modules["qwen_vl_utils.vision_process"].smart_nframes = smart_nframes
 
 def _get_initial_cache_position(self, input_ids, model_kwargs):
     if "cache_position" in model_kwargs:
@@ -363,8 +363,15 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     cache_dir = Path(cache_dir).expanduser()
     cache_file = cache_dir / f"{cache_key}.pt"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    if not cache_file.exists():
-        image_inputs, video_inputs, video_kwargs = process_vision_info(messages, return_video_kwargs=True)
+    if not cache_file.exists():        
+        # Interleaved processing
+        #image_inputs, video_inputs, video_kwargs = process_vision_info(messages, return_video_kwargs=True)
+        vr = QwenVideoReaderInterleaved(video_path,16,32,processor)
+        vr.process()
+
+        # used for finding correct shapes of blocks
+        # I think only time dim is needed ~ can probably remove other dims
+        video_inputs = vr.dummy_video_inputs()
         # save to cache
         if lvu_config.save_video_cache:
             torch.save({
@@ -383,14 +390,21 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     end = time.time()
     print(f"Preprocessing time for video: {end - start:.2f}s")
     
-    whole_inputs = processor(
+    s = time.time()
+    
+    processor.dummy_call = types.MethodType(dummy_call, processor)
+    whole_inputs = processor.dummy_call(
         text=text,
-        images=image_inputs,
-        videos=video_inputs,
+        images=None,
+        videos=[],
         padding=True,
         return_tensors="pt",
-        **video_kwargs,
+        **vr.video_kwargs,
+        video_inputs = vr.dummy_input(lvu_config.fps)
     )
+
+    e = time.time()
+    print(f"Tokenizer time was: {e - s:.2f}s")
     whole_inputs = whole_inputs.to(model.device)
     n_video_tokens = (whole_inputs['input_ids'] == model.config.video_token_id).sum().item()
     video_token_idxs = (whole_inputs['input_ids'] == model.config.video_token_id).nonzero(as_tuple=True)[1]
@@ -405,7 +419,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     )
     model.rope_deltas = rope_deltas
     
-    assert len(video_inputs) <= 1, "Only one video is supported for now."
+    #assert len(video_inputs) <= 1, "Only one video is supported for now."
     video_group_size = lvu_config.video_group_size
     if video_group_size is not None and video_group_size > 0:
         video_groups = video_inputs[0].split(video_group_size)
@@ -421,19 +435,9 @@ def chat_lvu_model(self, messages, **generation_kwargs):
                     video_grid_thw[2]]
                 ).unsqueeze(0)
             )
-        pixel_values_videos_group_size = int((video_group_size / len(video_inputs[0])) * whole_inputs['pixel_values_videos'].shape[0])
-        pixel_values_videos_groups = whole_inputs['pixel_values_videos'].split(pixel_values_videos_group_size)
-    else:
-        video_groups = [video_inputs[0]]
-        video_groups_tokens = [n_video_tokens]
-        video_groups_grid_thw = [whole_inputs['video_grid_thw']]
-        pixel_values_videos_groups = [whole_inputs['pixel_values_videos']]
-
-    # print("Sampled video frames: ", len(video_inputs[0]))
-    # print("Video groups: ", [len(group) for group in video_groups])
-    # print("Video groups tokens: ", video_groups_tokens)
-    # print("Video groups grid thw: ", video_groups_grid_thw)
-    # print("Pixel values videos groups: ", [group.shape for group in pixel_values_videos_groups])
+    
+    vr.set_frames_per_block(video_group_size)
+    pixel_iter = vr.get_pixel_iterator()
     
     # preprepare the chunk processing
     past_key_values = LVUCache()
@@ -446,10 +450,13 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     if lvu_config.query_based:
         past_key_values.set_prompt_length(prompt_input_ids.shape[1])
     video_groups_tokens[0] += first_video_token_id_idx # add the tokens before the first video group as well
-        
+    
+    total_prefill_time = 0
+
     # start processing the video groups
-    for i, pixel_values_videos_groups_i in tqdm(enumerate(pixel_values_videos_groups), 
-        desc="Processing video groups", total=len(pixel_values_videos_groups), disable=not lvu_config.use_tqdm):
+    for i, (pixel_values_videos_groups_i) in tqdm(enumerate(pixel_iter), 
+        desc="Processing video groups", disable=not lvu_config.use_tqdm):
+        start_of_block_prefill = time.time()
         group_i_inputs = {
             "video_grid_thw": video_groups_grid_thw[i],
             "second_per_grid_ts": whole_inputs['second_per_grid_ts'],
@@ -488,6 +495,8 @@ def chat_lvu_model(self, messages, **generation_kwargs):
                     for i in range(len(outputs.past_key_values)):
                         for j in range(len(outputs.past_key_values[i])):
                             past_key_values[i][j] = torch.cat((past_key_values[i][j], outputs.past_key_values[i][j]), dim=2)
+        end_of_block_prefill_time = time.time()
+        total_prefill_time += end_of_block_prefill_time - start_of_block_prefill
         # print(f"past_key_values shape: {past_key_values[0][0].shape}")
     assert past_len < whole_inputs['input_ids'].shape[1], "The past length should be less than the final input length."
     if lvu_config.query_based:
@@ -495,6 +504,8 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         past_key_values.set_prompt_length(0)
     # end of processing the video groups
     
+    start_of_decoding = time.time()
+
     final_inputs = {
         "input_ids": whole_inputs['input_ids'][:, past_len:],
         "attention_mask": whole_inputs['attention_mask'][:, past_len:],
@@ -513,6 +524,12 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     generated_ids = model.generate(**final_inputs, **generation_kwargs)
     lvu_config.enable = cache_enable
     
+    end_of_decoding = time.time()
+
+    print(f"total time spent fetching frames was: {vr.total_timing}")
+    print(f"total time spent on prefill was: {total_prefill_time}")
+    print(f"Time spent decoding was: {end_of_decoding-start_of_decoding}")
+
     generated_ids_trimmed = [
         out_ids[len(in_ids) :] for in_ids, out_ids in zip(final_inputs.input_ids, generated_ids)
     ]

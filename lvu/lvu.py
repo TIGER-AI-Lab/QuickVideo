@@ -14,6 +14,8 @@ class LVU:
                 "attn_implementation": "flash_attention_2",
             }
             model = AutoModelForImageTextToText.from_pretrained(config.model_name_or_path, **model_init_kwargs)
+        
+        # time processing
         if processor is None:
             processor = AutoProcessor.from_pretrained(config.model_name_or_path)
         
@@ -55,35 +57,26 @@ class LVU:
         return output
     
 if __name__ == "__main__":
-    # config = LVUConfig(
-    #     model_name_or_path="Qwen/Qwen2.5-VL-7B-Instruct", 
-    #     model_type="qwen25_vl",
-    #     top_k_predict_type="key_weighted_vector_norms",
-    #     video_group_size=16,
-    #     top_k=None,
-    #     top_p=0.75,
-    #     prefill_prune_starting_layer=None,
-    #     adaptive_local_attention=True,
-    #     # num_frames=128,
-    #     fps=2,
-    #     use_tqdm=True,
-    #     top_k_decay_type="linear",
-    #     top_k_decay_factor=0.33,
-    # )
+
     
+    import sys
+    model = sys.argv[1]
+    video_group_size = int(sys.argv[2])
+    video_path = sys.argv[3]
+
     config = LVUConfig(
         model_name_or_path="Qwen/Qwen2.5-VL-7B-Instruct", 
-        model_type="qwen25_vl",
+        model_type=model,
         # top_k_predict_type="query_attention_weights",
         # top_k_predict_type="query_attention_weights_by_value_norm",
         top_k_predict_type="key_norms_small",
-        video_group_size=16,
+        video_group_size=video_group_size,
         top_k=None,
         top_p=0.2,
         prefill_prune_starting_layer=None,
         adaptive_local_attention=True,
         # num_frames=128,
-        fps=2,
+        fps=1,
         use_tqdm=True,
         # top_k_decay_type="linear",
         # top_k_decay_factor=0.33,
@@ -100,14 +93,13 @@ if __name__ == "__main__":
     # output = lvu.generate(question, video_path, **generation_kwargs)
     # print(output)
     
-    DEMO_VIDEO = './video-FlexReduc/misc/Q8AZ16uBhr8_resized_fps2_mute.mp4'
     DEMO_QUESTIONS = [
         "As depicted in the video, how is the relationship between the rabbit and human?\nOptions:\nA. Hostile.\nB. Friend.\nC. Cooperator.\nD. No one is correct above.\nAnswer with the option's letter from the given choices directly.",
-        "What is the impression of the video?\nOptions:\nA. Sad.\nB. Funny.\nC. Horrible.\nD. Silent.\nAnswer with the option's letter from the given choices directly.",
-        "What is the subject of the video?\nOptions:\nA. Rabbit likes to eat carrots.\nB. How to raise a rabbit.\nC. A rabbit gives people trouble.\nD. A rabbit performs for food.\nAnswer with the option's letter from the given choices directly.",
+#        "What is the impression of the video?\nOptions:\nA. Sad.\nB. Funny.\nC. Horrible.\nD. Silent.\nAnswer with the option's letter from the given choices directly.",
+#        "What is the subject of the video?\nOptions:\nA. Rabbit likes to eat carrots.\nB. How to raise a rabbit.\nC. A rabbit gives people trouble.\nD. A rabbit performs for food.\nAnswer with the option's letter from the given choices directly.",
     ]
     EXPECTED_ANSWERS = ['A', 'B', 'C']
-    video_path = DEMO_VIDEO
+    
     for question, expected_answer in zip(DEMO_QUESTIONS, EXPECTED_ANSWERS):
         generation_kwargs = {
             "max_new_tokens": 512,

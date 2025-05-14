@@ -4,15 +4,14 @@
 
 ```bash
 uv sync
+uv pip install -e .
 uv pip install flash-attn --no-build-isolation
 ```
 
-```bash
-wget https://github.com/SCZwangxiao/video-FlexReduc/raw/refs/heads/main/misc/Q8AZ16uBhr8_resized_fps2_mute.mp4
-```
 ## Usage
 
 ```bash
+wget https://github.com/SCZwangxiao/video-FlexReduc/raw/refs/heads/main/misc/Q8AZ16uBhr8_resized_fps2_mute.mp4
 video_path="Q8AZ16uBhr8_resized_fps2_mute.mp4"
 python -m lvu.lvu --model_type "qwen25_lvu" --video_group_size 32 --video_path $video_path
 python -m lvu.lvu --model_type "qwen25_lvu_interleaved" --video_group_size 32 --video_path $video_path
@@ -44,4 +43,11 @@ generation_kwargs = {
 }
 output = lvu.generate(question, video_path, **generation_kwargs)
 print(output)
+```
+
+## Evaluation
+```bash
+git submodule update --init --recursive
+cd lmms-eval
+uv pip install -e .
 ```

@@ -1,5 +1,5 @@
+import os
 import torch
-from dataclasses import dataclass
 from transformers import AutoProcessor, AutoModelForImageTextToText
 from .models import lvu_init_model_map, lvu_run_model_map, lvu_chat_model_map
 from .lvu_config import LVUConfig
@@ -63,6 +63,8 @@ def main(
     video_path: str = "Q8AZ16uBhr8_resized_fps2_mute.mp4",
     top_k_predict_type: str = "key_norms_small",
 ):
+    assert isinstance(video_path, str), "video_path should be a string."
+    assert os.path.exists(video_path), f"video_path {video_path} does not exist."
     config = LVUConfig(
         model_name_or_path=model_name_or_path,
         model_type=model_type,
@@ -74,8 +76,9 @@ def main(
         top_p=0.2,
         prefill_prune_starting_layer=None,
         adaptive_local_attention=True,
-        # num_frames=128,
-        fps=1,
+        num_frames=128,
+        save_video_cache=True,
+        # fps=1,
         use_tqdm=True,
         # top_k_decay_type="linear",
         # top_k_decay_factor=0.33,

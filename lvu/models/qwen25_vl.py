@@ -12,7 +12,7 @@ from transformers.cache_utils import Cache
 from qwen_vl_utils import process_vision_info, extract_vision_info
 from ..utils import post_process_kv_cache
 from ..lvu_config import LVUConfig, LVULayerConfig
-from ..lvu_cache import LVUCache
+from ..lvu_cache import LVUCache, save_ndarray_as_image, load_image_as_ndarray
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
     apply_multimodal_rotary_pos_emb,
     repeat_kv,
@@ -367,19 +367,31 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         image_inputs, video_inputs, video_kwargs = process_vision_info(messages, return_video_kwargs=True)
         # save to cache
         if lvu_config.save_video_cache:
+            cache_images_folder = cache_file.parent / f"{cache_key}_images"
+            cache_images_folder.mkdir(parents=True, exist_ok=True)
+            total_size = 0
+            for i, image in enumerate(video_inputs[0]):
+                # image is a numpy array of (C, H, W)
+                save_ndarray_as_image(image.numpy(), cache_images_folder / f"{i:04d}.jpg")
+                total_size += os.path.getsize(cache_images_folder / f"{i:04d}.jpg")
             torch.save({
                 "image_inputs": image_inputs,
-                "video_inputs": video_inputs,
                 "video_kwargs": video_kwargs,
             }, cache_file)
-            cache_file_size_gb = cache_file.stat().st_size / (1024 ** 3)
-            print(f"Saved video cache to {cache_file} ({cache_file_size_gb:.2f} GB)")
+            total_size_gb = total_size / (1024 ** 3)
+            print(f"Saved video cache to {cache_file} ({total_size_gb:.2f} GB)")
     else:
         print(f"Cache file {cache_file} found. Loading video frames...")
         results = torch.load(cache_file)
         image_inputs = results["image_inputs"]
-        video_inputs = results["video_inputs"]
         video_kwargs = results["video_kwargs"]
+        video_inputs = []
+        cache_images_folder = cache_file.parent / f"{cache_key}_images"
+        all_images = sorted(cache_images_folder.glob("*.jpg"))
+        for i in range(len(all_images)):
+            image = torch.tensor(load_image_as_ndarray(cache_images_folder / f"{i:04d}.jpg"))
+            video_inputs.append(image)
+        video_inputs = [torch.stack(video_inputs)]
     end = time.time()
     print(f"Preprocessing time for video: {end - start:.2f}s")
     
@@ -407,6 +419,9 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     
     assert len(video_inputs) <= 1, "Only one video is supported for now."
     video_group_size = lvu_config.video_group_size
+    temporal_patch_size = processor.image_processor.temporal_patch_size
+    if not video_group_size % temporal_patch_size == 0:
+        video_group_size += temporal_patch_size - (video_group_size % temporal_patch_size)
     if video_group_size is not None and video_group_size > 0:
         video_groups = video_inputs[0].split(video_group_size)
         assert all(len(group) % 2 == 0 for group in video_groups), "The video group size should be even."
@@ -416,7 +431,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         for group in video_groups:
             video_groups_grid_thw.append(
                 torch.tensor(
-                    [int(video_grid_thw[0] * (len(group) / len(video_inputs[0]))),
+                    [len(group) // temporal_patch_size,
                     video_grid_thw[1],
                     video_grid_thw[2]]
                 ).unsqueeze(0)

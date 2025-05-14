@@ -497,7 +497,7 @@ class QwenVideoReaderInterleaved:
         e = time.time()
         self.total_timing += e-s
 
-    def dummy_input(self, fps):
+    def dummy_input(self):
                 
         return {
             "video_grid_thw" : torch.tensor((
@@ -507,7 +507,7 @@ class QwenVideoReaderInterleaved:
             ), dtype=torch.int64).unsqueeze(dim=0), 
             "second_per_grid_ts": -1,
             "pixel_values_videos": None,
-            "fps" : fps
+            "fps" : self.video_kwargs.get("fps", 2.0),
         }
         
     def dummy_video_inputs(self):
@@ -789,7 +789,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         padding=True,
         return_tensors="pt",
         **vr.video_kwargs,
-        video_inputs = vr.dummy_input(lvu_config.fps)
+        video_inputs = vr.dummy_input()
     )
 
     e = time.time()

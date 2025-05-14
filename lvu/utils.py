@@ -268,6 +268,7 @@ def post_process_kv_cache(
     past_values = values[:, :, :-q_len]
     keys = keys[:, :, -q_len:]
     values = values[:, :, -q_len:]
+    old_k_shape = keys.shape
     
     top_k_select_mask = get_top_k_mask_to_predict(attn_weights, keys, values, hidden_states[:, :q_len], top_k=top_k, predict_type=predict_type)
     

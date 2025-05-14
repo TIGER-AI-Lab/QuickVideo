@@ -9,6 +9,8 @@ from transformers.cache_utils import (
     Tuple,
 )
 from .lvu_config import LVUConfig
+from PIL import Image
+import numpy as np
 
 def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     """
@@ -20,6 +22,48 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
         return hidden_states
     hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
+
+
+# Assuming your ndarray is called 'array' with shape (C, H, W)
+def save_ndarray_as_image(array, filename):
+    # Convert from (C, H, W) to (H, W, C)
+    array_hwc = np.transpose(array, (1, 2, 0))
+    
+    # Ensure the array is uint8 type
+    array_hwc = array_hwc.astype(np.uint8)
+    
+    # Handle different numbers of channels
+    if array.shape[0] == 1:
+        # Grayscale image - squeeze to remove channel dimension
+        image = Image.fromarray(array_hwc.squeeze(), mode='L')
+    elif array.shape[0] == 3:
+        # RGB image
+        image = Image.fromarray(array_hwc, mode='RGB')
+    elif array.shape[0] == 4:
+        # RGBA image
+        image = Image.fromarray(array_hwc, mode='RGBA')
+    else:
+        raise ValueError(f"Unsupported number of channels: {array.shape[0]}")
+    
+    # Save the image
+    image.save(filename)
+
+def load_image_as_ndarray(filename, channels_first=True):
+    # Load the image
+    image = Image.open(filename)
+    
+    # Convert to numpy array
+    array = np.array(image)
+    
+    # If the image is grayscale and we want it in (C, H, W) format
+    if len(array.shape) == 2 and channels_first:
+        # Add channel dimension (1, H, W)
+        array = np.expand_dims(array, axis=0)
+    elif len(array.shape) == 3 and channels_first:
+        # Convert from (H, W, C) to (C, H, W)
+        array = np.transpose(array, (2, 0, 1))
+    
+    return array
 
 class LVUCache(DynamicCache):
     """

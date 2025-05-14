@@ -55,21 +55,20 @@ class LVU:
             raise ValueError(f"Model type {self.config.model_type} not supported.")
         output = self.chat_model_func(messages, **generation_kwargs)
         return output
-    
-if __name__ == "__main__":
 
-    
-    import sys
-    model = sys.argv[1]
-    video_group_size = int(sys.argv[2])
-    video_path = sys.argv[3]
-
+def main(
+    model_name_or_path: str = "Qwen/Qwen2.5-VL-7B-Instruct",
+    model_type: str = "qwen25_lvu",
+    video_group_size: int = 1,
+    video_path: str = "Q8AZ16uBhr8_resized_fps2_mute.mp4",
+    top_k_predict_type: str = "key_norms_small",
+):
     config = LVUConfig(
-        model_name_or_path="Qwen/Qwen2.5-VL-7B-Instruct", 
-        model_type=model,
+        model_name_or_path=model_name_or_path,
+        model_type=model_type,
         # top_k_predict_type="query_attention_weights",
         # top_k_predict_type="query_attention_weights_by_value_norm",
-        top_k_predict_type="key_norms_small",
+        top_k_predict_type=top_k_predict_type,
         video_group_size=video_group_size,
         top_k=None,
         top_p=0.2,
@@ -84,7 +83,7 @@ if __name__ == "__main__":
     lvu = LVU(config)
     
     # question = "Describe this video."
-    # video_path = "/home/dongfu/data/.cache/huggingface/videomme/data/ZXoaMa6jlO4.mp4"
+    # video_path = "Q8AZ16uBhr8_resized_fps2_mute.mp4"
     # generation_kwargs = {
     #     "max_new_tokens": 512,
     #     "do_sample": False,
@@ -110,3 +109,7 @@ if __name__ == "__main__":
         print(f"Question: {question}")
         print(f"Expected Answer: {expected_answer}")
         print(f"Model Output: {output}")
+             
+if __name__ == "__main__":
+    import fire
+    fire.Fire(main)

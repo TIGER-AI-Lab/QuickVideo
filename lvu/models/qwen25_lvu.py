@@ -668,6 +668,10 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         past_len += video_groups_tokens[i] # only the video group tokens are counted, prompt tokens are not counted
         group_i_inputs = group_i_inputs.to(model.device)
         group_i_inputs['use_cache'] = True
+        
+        for k, v in group_i_inputs.items():
+            if isinstance(v, torch.Tensor):
+                print(f"key: {k}, shape: {v.shape}")
         if lvu_config.adaptive_local_attention:
             group_i_inputs['past_key_values'] = past_key_values
             with torch.no_grad():

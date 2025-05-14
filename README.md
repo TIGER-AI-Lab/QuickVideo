@@ -7,11 +7,18 @@ uv sync
 uv pip install flash-attn --no-build-isolation
 ```
 
+```bash
+wget https://github.com/SCZwangxiao/video-FlexReduc/raw/refs/heads/main/misc/Q8AZ16uBhr8_resized_fps2_mute.mp4
+```
 ## Usage
 
 ```bash
-python -m lvu.lvu
+video_path="Q8AZ16uBhr8_resized_fps2_mute.mp4"
+python -m lvu.lvu --model_type "qwen25_lvu" --video_group_size 32 --video_path $video_path
+python -m lvu.lvu --model_type "qwen25_lvu_interleaved" --video_group_size 32 --video_path $video_path
 ```
+
+## Example
 
 ```python
 from lvu import LVU, LVUConfig
@@ -29,7 +36,7 @@ config = LVUConfig(
 lvu = LVU(config)
 
 question = "Describe this video."
-video_path = "/home/dongfu/data/.cache/huggingface/videomme/data/ZXoaMa6jlO4.mp4"
+video_path = ""Q8AZ16uBhr8_resized_fps2_mute.mp4""
 generation_kwargs = {
     "max_new_tokens": 128,
     "do_sample": False,

@@ -6,7 +6,8 @@ from .lvu_config import LVUConfig, LVULayerConfig
 from .lvu_cache import DynamicCache, LVUCache
 import math
 import time
-
+import threading
+from queue import Queue
 import numpy as np
 from PIL import Image
 import os
@@ -38,6 +39,7 @@ class PixelIterator:
         self.vr = vr
         self.processor = processor
         self.video_kwargs = video_kwargs
+        self.processor_timing = 0
 
     def __iter__(self):
         return self
@@ -48,6 +50,7 @@ class PixelIterator:
         frames = torch.from_numpy(next(self.vr)).float()
         e = time.time()
         self.qwen_vr.total_timing += e-s
+        s = time.time()
         #save_image_to_home(frames[8], f"img/{self.iterations}.png")
         pixels = self.processor(
             text="a",
@@ -58,7 +61,83 @@ class PixelIterator:
             **self.video_kwargs,
         )['pixel_values_videos']
         self.iterations += 1
+        e = time.time()
+        self.processor_timing += e - s
         return pixels
+
+
+
+class AsyncPixelIterator(PixelIterator):
+    def __init__(self, qwen_vr, vr, frames_per_block, video_kwargs, processor, buffer_size=3):
+        super().__init__(qwen_vr, vr, frames_per_block, video_kwargs, processor)
+        # Threading components
+        self.buffer = Queue(maxsize=buffer_size)
+        self.is_finished = False
+        self.worker_thread = None
+        self.exception = None
+        
+    def __iter__(self):
+        # Start the background worker thread
+        self.worker_thread = threading.Thread(target=self._background_worker, daemon=True)
+        self.worker_thread.start()
+        return self
+    
+    def __next__(self):
+        # Get the next processed frame from the buffer
+        while True:
+            if self.exception:
+                raise self.exception
+            
+            if not self.buffer.empty():
+                return self.buffer.get()
+            
+            if self.is_finished and self.buffer.empty():
+                raise StopIteration
+            
+            # Wait a bit before checking again
+            time.sleep(0.01)
+    
+    def _background_worker(self):
+        """Background thread that continuously processes frames"""
+        try:
+            while True:
+                # Process the next frame
+                pixels = self._process_frame()
+                if pixels is None:
+                    break
+                self.buffer.put(pixels)
+        except StopIteration:
+            self.is_finished = True
+        except Exception as e:
+            self.exception = e
+            self.is_finished = True
+    
+    def _process_frame(self):
+        """Process a single frame"""
+        try:
+            s = time.time()
+            
+            # Get the next frame
+            frames = torch.from_numpy(next(self.vr)).float()
+            e = time.time()
+            self.qwen_vr.total_timing += e - s
+            #save_image_to_home(frames[8], f"img/{self.iterations}.png")
+            s = time.time()
+            # Process the frame
+            pixels = self.processor(
+                text="a",
+                images=[],
+                videos=[frames],
+                padding=True,
+                return_tensors="pt",
+                **self.video_kwargs,
+            )['pixel_values_videos']
+            self.iterations += 1
+            e = time.time()
+            self.processor_timing += e - s
+            return pixels
+        except StopIteration:
+            raise
 
 from qwen_vl_utils.vision_process import smart_nframes, extract_vision_info,IMAGE_FACTOR,VIDEO_MIN_PIXELS, get_video_reader_backend, VIDEO_READER_BACKENDS,FRAME_FACTOR,smart_resize,transforms,InterpolationMode,VIDEO_TOTAL_PIXELS,VIDEO_MAX_PIXELS,logger
 from deepcodec import InterleavedVideoReader
@@ -191,7 +270,8 @@ class QwenVideoReaderInterleaved:
 
 
     def get_pixel_iterator(self):
-        return PixelIterator(self, self.vr, self.frames_per_block,self.video_kwargs, self.processor)
+        # return PixelIterator(self, self.vr, self.frames_per_block,self.video_kwargs, self.processor)
+        return AsyncPixelIterator(self, self.vr, self.frames_per_block,self.video_kwargs, self.processor)
 
 
 def get_top_k_mask_to_predict(attn_weights, keys, values, outputs, top_k=100, predict_type="attention_weights"):

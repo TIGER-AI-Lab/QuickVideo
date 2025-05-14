@@ -454,8 +454,12 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     total_prefill_time = 0
 
     # start processing the video groups
+    print(f"Processing total of {vr.nframes} frames of {video_group_size} frames each.")
+    e2e_start = time.time()
     for i, (pixel_values_videos_groups_i) in tqdm(enumerate(pixel_iter), 
-        desc="Processing video groups", disable=not lvu_config.use_tqdm):
+        desc="Processing video groups", disable=not lvu_config.use_tqdm,
+        total=vr.nframes // video_group_size,
+        ):
         start_of_block_prefill = time.time()
         group_i_inputs = {
             "video_grid_thw": video_groups_grid_thw[i],
@@ -503,7 +507,8 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         # reset prompt length as all video groups are processed
         past_key_values.set_prompt_length(0)
     # end of processing the video groups
-    
+    e2e_end = time.time()
+    e2e_time = e2e_end - e2e_start
     start_of_decoding = time.time()
 
     final_inputs = {
@@ -527,7 +532,10 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     end_of_decoding = time.time()
 
     print(f"total time spent fetching frames was: {vr.total_timing}")
+    print(f"total time spent on processor was: {pixel_iter.processor_timing}")
     print(f"total time spent on prefill was: {total_prefill_time}")
+    print(f"total time spent on e2e fetching and decoding was: {e2e_time}")
+    print(f"Time saved by interleaved processing was: {vr.total_timing + pixel_iter.processor_timing + total_prefill_time - e2e_time}")
     print(f"Time spent decoding was: {end_of_decoding-start_of_decoding}")
 
     generated_ids_trimmed = [

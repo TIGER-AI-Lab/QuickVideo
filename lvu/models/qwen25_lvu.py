@@ -626,7 +626,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         for group in video_groups:
             video_groups_grid_thw.append(
                 torch.tensor(
-                    [len(group) // temporal_patch_size,
+                    [(len(group) -1 ) // temporal_patch_size + 1,
                     video_grid_thw[1],
                     video_grid_thw[2]]
                 ).unsqueeze(0)

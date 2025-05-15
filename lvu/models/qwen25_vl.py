@@ -436,7 +436,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
                     video_grid_thw[2]]
                 ).unsqueeze(0)
             )
-        pixel_values_videos_group_size = int((video_group_size / len(video_inputs[0])) * whole_inputs['pixel_values_videos'].shape[0])
+        pixel_values_videos_group_size = round((video_group_size / len(video_inputs[0])) * whole_inputs['pixel_values_videos'].shape[0])
         pixel_values_videos_groups = whole_inputs['pixel_values_videos'].split(pixel_values_videos_group_size)
     else:
         video_groups = [video_inputs[0]]
@@ -447,8 +447,12 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     # print("Sampled video frames: ", len(video_inputs[0]))
     # print("Video groups: ", [len(group) for group in video_groups])
     # print("Video groups tokens: ", video_groups_tokens)
-    # print("Video groups grid thw: ", video_groups_grid_thw)
+    print("Video groups grid thw: ", video_groups_grid_thw)
     # print("Pixel values videos groups: ", [group.shape for group in pixel_values_videos_groups])
+    
+    # if any([group.shape[0] % 4 != 0 for group in pixel_values_videos_groups]):
+    #     print("Warning: The number of frames in each video group should be divisible by 4. Please check the video group size.")
+    #     return ""
     
     # preprepare the chunk processing
     past_key_values = LVUCache()
@@ -484,8 +488,13 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         group_i_inputs['use_cache'] = True
         if lvu_config.adaptive_local_attention:
             group_i_inputs['past_key_values'] = past_key_values
-            with torch.no_grad():
-                outputs = model(**group_i_inputs)
+            try:
+                with torch.no_grad():
+                    outputs = model(**group_i_inputs)
+            except Exception as e:
+                print("Error in adaptive local attention. Please check the video group size. returning empty string.")
+                print(e)
+                return ""
             # later video groups will use the past key values
             past_key_values = outputs.past_key_values
         else:

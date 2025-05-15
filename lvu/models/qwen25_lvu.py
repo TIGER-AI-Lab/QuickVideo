@@ -631,7 +631,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
                     video_grid_thw[2]]
                 ).unsqueeze(0)
             )
-        pixel_values_videos_group_size = int((video_group_size / len(video_inputs[0])) * whole_inputs['pixel_values_videos'].shape[0])
+        pixel_values_videos_group_size = round((video_group_size / len(video_inputs[0])) * whole_inputs['pixel_values_videos'].shape[0])
         pixel_values_videos_groups = whole_inputs['pixel_values_videos'].split(pixel_values_videos_group_size)
     else:
         video_groups = [video_inputs[0]]

@@ -13,6 +13,13 @@ uv pip install flash-attn --no-build-isolation
 ```bash
 wget https://github.com/SCZwangxiao/video-FlexReduc/raw/refs/heads/main/misc/Q8AZ16uBhr8_resized_fps2_mute.mp4
 video_path="Q8AZ16uBhr8_resized_fps2_mute.mp4"
+#!/bin/bash
+
+for num_frames in {64..80}; do
+  echo "Processing with $num_frames frames"
+  python -m lvu.lvu --model_type "qwen25_vl" --video_group_size 16 --video_path $video_path --num_frames $num_frames
+done
+
 python -m lvu.lvu --model_type "qwen25_lvu" --video_group_size 32 --video_path $video_path
 python -m lvu.lvu --model_type "qwen25_lvu_interleaved" --video_group_size 32 --video_path $video_path
 ```

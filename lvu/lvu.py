@@ -62,6 +62,7 @@ def main(
     video_group_size: int = 1,
     video_path: str = "Q8AZ16uBhr8_resized_fps2_mute.mp4",
     top_k_predict_type: str = "key_norms_small",
+    num_frames=64,
 ):
     assert isinstance(video_path, str), "video_path should be a string."
     assert os.path.exists(video_path), f"video_path {video_path} does not exist."
@@ -76,7 +77,7 @@ def main(
         top_p=0.2,
         prefill_prune_starting_layer=None,
         adaptive_local_attention=True,
-        num_frames=128,
+        num_frames=num_frames,
         save_video_cache=True,
         # fps=1,
         use_tqdm=True,

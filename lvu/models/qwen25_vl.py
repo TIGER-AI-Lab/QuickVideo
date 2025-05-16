@@ -488,13 +488,8 @@ def chat_lvu_model(self, messages, **generation_kwargs):
         group_i_inputs['use_cache'] = True
         if lvu_config.adaptive_local_attention:
             group_i_inputs['past_key_values'] = past_key_values
-            try:
-                with torch.no_grad():
-                    outputs = model(**group_i_inputs)
-            except Exception as e:
-                print("Error in adaptive local attention. Please check the video group size. returning empty string.")
-                print(e)
-                return ""
+            with torch.no_grad():
+                outputs = model(**group_i_inputs)
             # later video groups will use the past key values
             past_key_values = outputs.past_key_values
         else:

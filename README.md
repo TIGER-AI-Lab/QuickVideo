@@ -1,4 +1,4 @@
-# LVU
+# QuickVideo
 
 ## Installation
 

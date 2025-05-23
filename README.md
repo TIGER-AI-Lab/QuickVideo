@@ -1,4 +1,6 @@
-# QuickVideo
+<p align="center">
+  <img src="https://github.com/TIGER-AI-Lab/QuickVideo/raw/main/assets/logo.png" alt="QuickVideo Logo" width="400"/>
+</p>
 
 ## Installation
 

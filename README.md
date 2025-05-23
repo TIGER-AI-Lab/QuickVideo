@@ -1,6 +1,7 @@
 <p align="center">
   <img src="https://github.com/TIGER-AI-Lab/QuickVideo/raw/main/assets/logo.png" alt="QuickVideo Logo" width="340"/>
 </p>
+<h3 align="center">Efficient video loading and context prefill for hour-long video understanding</h3>
 
 ## Installation
 

@@ -303,7 +303,7 @@ uv pip install flash-attn --no-build-isolation
 
 ### 1. Download Example Video
 ```bash
-wget https://github.com/SCZwangxiao/video-FlexReduc/raw/refs/heads/main/misc/Q8AZ16uBhr8_resized_fps2_mute.mp4
+wget https://github.com/TIGER-AI-Lab/QuickVideo/raw/refs/heads/dev/video/Q8AZ16uBhr8_resized_fps2_mute.mp4
 video_path="Q8AZ16uBhr8_resized_fps2_mute.mp4"
 ```
 

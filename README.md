@@ -26,10 +26,10 @@ Long video understanding has emerged as a crucial capability in real-world appli
 To address these challenges, we propose **QuickVideo**, a system-algorithm co-design that substantially accelerates long video understanding to support real-time downstream applications. It comprises three key innovations: 
 
 - **QuickDecoder**, a parallelized CPU-based video decoder that achieves 2–3 times speedup by splitting videos into keyframe-aligned intervals processed concurrently. 
-- **QuickPrefill**, a memory-efficient prefilling method by group-based prefilling (save activation memory) and KV-cache pruning (saving KV memory) to support more frames with less GPU memory.
+- **QuickPrefill**, a memory-efficient prefilling method by group-based prefilling (save activation memory) and KV-cache pruning (saving KV memory) to support more frames with less GPU memory. We found that the simply always keeping KV tokens with smallest **key norms (L2)** can achieve 97% of the original performance while reducing the KV-cache size by 50%.
 - **Overlapping scheme that overlaps CPU video decoding with GPU inference**. This brings the end-to-end latency down from 70 seconds to 20 seconds for a 1-hour video, achieving a 3.5x speedup (see following figure).
 
-
+$\downarrow$
 ![./assets/imgs/interleaving_time.png](./assets/imgs/interleaving_time.png)
 
 We evaluate both QuickCodec on video decoding efficiency (left figure) and QuickPrefill with 50% of the KV-cache tokens pruned (right figure and hidden table). Results show significant speedup and memory saving while preserving 97% of the original performance on 4 long video understanding benchmarks: VideoMME, LongVideoBench, LVBench, and MLVU.
@@ -75,7 +75,7 @@ We evaluate both QuickCodec on video decoding efficiency (left figure) and Quick
   </thead>
   <tbody>
     <tr style="background-color: #e8f4f8;">
-      <td colspan="9" style="border: 1px solid #ddd; padding: 8px; font-weight: bold;">64 Frames</td>
+      <td colspan="9" style="border: 1px solid #ddd; padding: 8px; font-weight: bold; text-align: center;">64 Frames</td>
     </tr>
     <tr>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">-</td>
@@ -112,7 +112,7 @@ We evaluate both QuickCodec on video decoding efficiency (left figure) and Quick
     </tr>
     <tr>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">16</td>
-      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Key Norms (Quick Prefill)</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Key Norms (↓)</td>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">0.5</td>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">60.56</td>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">56.17</td>
@@ -122,7 +122,7 @@ We evaluate both QuickCodec on video decoding efficiency (left figure) and Quick
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">95.90%</td>
     </tr>
     <tr style="background-color: #e8f4f8;">
-      <td colspan="9" style="border: 1px solid #ddd; padding: 8px; font-weight: bold;">128 Frames</td>
+      <td colspan="9" style="border: 1px solid #ddd; padding: 8px; font-weight: bold; text-align: center;">128 Frames</td>
     </tr>
     <tr>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">-</td>
@@ -159,7 +159,7 @@ We evaluate both QuickCodec on video decoding efficiency (left figure) and Quick
     </tr>
     <tr>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">16</td>
-      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Key Norms (Quick Prefill)</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Key Norms (↓)</td>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">0.5</td>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">63.41</td>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">58.19</td>
@@ -169,7 +169,7 @@ We evaluate both QuickCodec on video decoding efficiency (left figure) and Quick
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">95.39%</td>
     </tr>
     <tr style="background-color: #e8f4f8;">
-      <td colspan="9" style="border: 1px solid #ddd; padding: 8px; font-weight: bold;">256 Frames</td>
+      <td colspan="9" style="border: 1px solid #ddd; padding: 8px; font-weight: bold; text-align: center;">256 Frames</td>
     </tr>
     <tr>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">-</td>
@@ -206,7 +206,7 @@ We evaluate both QuickCodec on video decoding efficiency (left figure) and Quick
     </tr>
     <tr>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">16</td>
-      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Key Norms (Quick Prefill)</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Key Norms (↓)</td>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">0.5</td>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">64.04</td>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">60.21</td>
@@ -216,7 +216,7 @@ We evaluate both QuickCodec on video decoding efficiency (left figure) and Quick
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">97.08%</td>
     </tr>
     <tr style="background-color: #e8f4f8;">
-      <td colspan="9" style="border: 1px solid #ddd; padding: 8px; font-weight: bold;">1024 Frames</td>
+      <td colspan="9" style="border: 1px solid #ddd; padding: 8px; font-weight: bold; text-align: center;">1024 Frames</td>
     </tr>
     <tr>
       <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">-</td>

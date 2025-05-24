@@ -343,9 +343,7 @@ print(output)
 • Time saved: 10.57s ⚡
 
 🎬 Generated Response:
-"The video is a compilation of classic animated shorts featuring iconic 
-characters from the 1940s and 1950s, showcasing slapstick humor and 
-vibrant animation styles typical of that era..."
+['The video is a compilation of classic animated shorts featuring iconic characters from the 1940s and 1950s, showcasing slapstick humor and vibrant animation styles typical of that era. The clips include:\n\n1. **"A Bug\'s Life"**: A rabbit character is seen in a desert setting, engaging in a comedic chase sequence with a carrot. The rabbit exhibits exaggerated expressions and movements, typical of the cartoon\'s slapstick style.\n\n2. **"The Wabbit Who Could"**: Bugs Bunny appears in a whimsical scene where he is performing a magic trick involving a carrot. The animation is colorful and lively']
 ```
 
 ### 3. Baseline Comparison

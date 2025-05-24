@@ -21,10 +21,10 @@ Efficient video loading and context prefill for hour-long video understanding
 
 <p align="center">
 | 
-<a href="#installation"><b>Installation</b></a> | 
+<a href="https://github.com/TIGER-AI-Lab/QuickVideo?tab=readme-ov-file#-quick-start"><b>Installation</b></a> | 
 <a href="https://arxiv.org/abs/2505.16175"><b>Paper</b></a> | 
 <a href="https://github.com/TIGER-AI-Lab/QuickCodec"><b>QuickCodec</b></a> |
-<a href="#usage"><b>QuickPrefill</b></a> 
+<a href="https://github.com/TIGER-AI-Lab/QuickVideo?tab=readme-ov-file#2-run-quickvideo-recommended"><b>QuickPrefill</b></a> 
 |
 </p>
 
@@ -344,6 +344,9 @@ print(output)
 
 🎬 Generated Response:
 ['The video is a compilation of classic animated shorts featuring iconic characters from the 1940s and 1950s, showcasing slapstick humor and vibrant animation styles typical of that era. The clips include:\n\n1. **"A Bug\'s Life"**: A rabbit character is seen in a desert setting, engaging in a comedic chase sequence with a carrot. The rabbit exhibits exaggerated expressions and movements, typical of the cartoon\'s slapstick style.\n\n2. **"The Wabbit Who Could"**: Bugs Bunny appears in a whimsical scene where he is performing a magic trick involving a carrot. The animation is colorful and lively']
+"The video is a compilation of classic animated shorts featuring iconic 
+characters from the 1940s and 1950s, showcasing slapstick humor and 
+vibrant animation styles typical of that era..."
 ```
 
 ### 3. Baseline Comparison

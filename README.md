@@ -65,24 +65,7 @@ Long video understanding has emerged as a crucial capability for real-world appl
 ## 📊 Performance Results
 
 Our evaluation on 4 long video understanding benchmarks (VideoMME, LongVideoBench, LVBench, MLVU) demonstrates significant improvements:
-
-<table align="center">
-  <tr>
-    <td width="34%">
-      <img src="./assets/imgs/video_processing_times.png" alt="Video Processing Times" width="100%">
-      <p align="center"><em>Video decoding speedup</em></p>
-    </td>
-    <td width="66%">
-      <img src="./assets/imgs/kv_pruning_avg_performance.png" alt="KV Pruning Performance" width="100%">
-      <p align="center"><em>Performance vs. memory trade-off</em></p>
-    </td>
-  </tr>
-</table>
-
-<details>
-<summary><b>📈 Detailed Performance Comparison</b></summary>
-
-<table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; margin-top: 15px;">
+<table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif;">
   <colgroup>
     <col style="width: 10%;">
     <col style="width: 20%;">
@@ -95,58 +78,210 @@ Our evaluation on 4 long video understanding benchmarks (VideoMME, LongVideoBenc
     <col style="width: 10%;">
   </colgroup>
   <thead>
-    <tr style="background-color: #f8f9fa;">
-      <th style="border: 1px solid #dee2e6; padding: 12px; text-align: center; font-weight: 600;">Group Size</th>
-      <th style="border: 1px solid #dee2e6; padding: 12px; text-align: center; font-weight: 600;">KV Pruning Method</th>
-      <th style="border: 1px solid #dee2e6; padding: 12px; text-align: center; font-weight: 600;">ρ</th>
-      <th style="border: 1px solid #dee2e6; padding: 12px; text-align: center; font-weight: 600;">VideoMME</th>
-      <th style="border: 1px solid #dee2e6; padding: 12px; text-align: center; font-weight: 600;">LongVideoBench</th>
-      <th style="border: 1px solid #dee2e6; padding: 12px; text-align: center; font-weight: 600;">LVBench</th>
-      <th style="border: 1px solid #dee2e6; padding: 12px; text-align: center; font-weight: 600;">MLVU</th>
-      <th style="border: 1px solid #dee2e6; padding: 12px; text-align: center; font-weight: 600;">Avg</th>
-      <th style="border: 1px solid #dee2e6; padding: 12px; text-align: center; font-weight: 600;">Performance</th>
+    <tr style="background-color: #f2f2f2;">
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Group Size</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">KV Pruning method</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">ρ</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">VideoMME</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">LongVideoBench (val)</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">LVBench</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">MLVU (dev)</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Avg</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Performance</th>
     </tr>
   </thead>
   <tbody>
-    <tr style="background-color: #e3f2fd;">
-      <td colspan="9" style="border: 1px solid #dee2e6; padding: 10px; font-weight: bold; text-align: center;">64 Frames</td>
-    </tr>
-    <tr style="background-color: #f8f9fa;">
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">-</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center; font-weight: 500;">Baseline</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">1.0</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">62.41</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">59.69</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">40.09</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">63.86</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center; font-weight: 500;">56.51</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center; color: #28a745; font-weight: 600;">100.00%</td>
+    <tr style="background-color: #e8f4f8;">
+      <td colspan="9" style="border: 1px solid #ddd; padding: 8px; font-weight: bold; text-align: center;">64 Frames</td>
     </tr>
     <tr>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">16</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">Key Norms (L2) ⭐</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">0.5</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">60.56</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">56.17</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">37.70</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">62.34</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center; font-weight: 500;">54.19</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center; color: #28a745; font-weight: 600;">95.90%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">-</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">-</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">1</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">62.41</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">59.69</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">40.09</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">63.86</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">56.51</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">100.00%</td>
     </tr>
     <tr>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">16</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">Attention Scores</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">0.5</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">58.63</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">52.95</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">37.83</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">59.87</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center;">52.32</td>
-      <td style="border: 1px solid #dee2e6; padding: 8px; text-align: center; color: #ffc107;">92.58%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">16</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Value Norms</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">0.5</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">47.63</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">35.98</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">30.92</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">31.38</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">36.48</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">64.55%</td>
     </tr>
-    <!-- Additional rows truncated for brevity - include all original data -->
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">16</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Attention Scores</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">0.5</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">58.63</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">52.95</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">37.83</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">59.87</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">52.32</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">92.58%</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">16</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Key Norms (↓)</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">0.5</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">60.56</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">56.17</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">37.70</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">62.34</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">54.19</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">95.90%</td>
+    </tr>
+    <tr style="background-color: #e8f4f8;">
+      <td colspan="9" style="border: 1px solid #ddd; padding: 8px; font-weight: bold; text-align: center;">128 Frames</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">-</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">-</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">1</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">66.41</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">60.96</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">42.87</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">66.86</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">59.27</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">100.00%</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">16</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Value Norms</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">0.5</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">48.56</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">37.32</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">30.73</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">38.51</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">38.78</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">65.42%</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">16</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Attention Scores</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">0.5</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">60.96</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">55.20</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">39.70</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">64.36</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">55.06</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">92.89%</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">16</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Key Norms (↓)</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">0.5</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">63.41</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">58.19</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">39.57</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">64.99</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">56.54</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">95.39%</td>
+    </tr>
+    <tr style="background-color: #e8f4f8;">
+      <td colspan="9" style="border: 1px solid #ddd; padding: 8px; font-weight: bold; text-align: center;">256 Frames</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">-</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">-</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">1</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">65.78</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">61.56</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">43.90</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">68.65</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">59.97</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">100.00%</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">16</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Value Norms</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">0.5</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">48.33</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">38.89</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">31.38</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">37.74</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">39.08</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">65.17%</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">16</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Attention Scores</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">0.5</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">62.52</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">57.22</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">41.96</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">67.27</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">57.24</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">95.45%</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">16</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Key Norms (↓)</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">0.5</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">64.04</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">60.21</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">41.90</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">66.73</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">58.22</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">97.08%</td>
+    </tr>
+    <tr style="background-color: #e8f4f8;">
+      <td colspan="9" style="border: 1px solid #ddd; padding: 8px; font-weight: bold; text-align: center;">1024 Frames</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">-</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">-</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">1</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">62.00</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">60.43</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">42.29</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">63.48</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">57.05</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">100.00%</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">16</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Value Norms</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">0.5</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">47.37</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">33.66</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">29.18</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">32.65</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">35.71</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">62.60%</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">16</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Attention Scores</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">0.5</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">62.22</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">58.49</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">42.03</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">64.45</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">56.80</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">99.56%</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">16</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">Key Norms</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">0.5</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">59.99</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">61.59</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">40.80</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">64.76</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">56.78</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">99.53%</td>
+    </tr>
   </tbody>
 </table>
+
 
 </details>
 

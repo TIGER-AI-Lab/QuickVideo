@@ -65,6 +65,10 @@ Long video understanding has emerged as a crucial capability for real-world appl
 ## 📊 Performance Results
 
 Our evaluation on 4 long video understanding benchmarks (VideoMME, LongVideoBench, LVBench, MLVU) demonstrates significant improvements:
+
+<details>
+<summary><b>Performance Table</b></summary>
+
 <table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif;">
   <colgroup>
     <col style="width: 10%;">
@@ -379,7 +383,7 @@ export FORCE_QWENVL_VIDEO_READER='deepcodec'
 ```bash
 # Example evaluation script
 num_frame=1024
-benchmark_name="lvbench,videomme,mlvu_dev"
+benchmark_name="videomme,longvideobench_val_v,lvbench,mlvu_dev"
 
 accelerate launch --num_processes 8 --main_process_port 12351 -m lmms_eval \
     --model qwen2_5_vl \
@@ -398,10 +402,10 @@ accelerate launch --num_processes 8 --main_process_port 12351 -m lmms_eval \
 | Parameter | Description | Default | Options |
 |-----------|-------------|---------|---------|
 | `model_type` | Processing mode | `qwen25_lvu` | `qwen25_lvu`, `qwen25_lvu_interleaved` |
-| `video_group_size` | Frames per processing group | `16` | `8`, `16`, `32` |
+| `video_group_size` | Frames per processing group | `16` | `8`, `16`, `32`, ... |
 | `top_k` | Tokens to keep per group | `64` | Any positive integer |
 | `top_k_predict_type` | Pruning strategy | `key_norms_small` | `key_norms_small`, `attention_scores`, `value_norms` |
-| `num_frames` | Maximum frames to process | `1024` | `64`, `128`, `256`, `1024` |
+| `num_frames` | Maximum frames to process | `1024` | `64`, `128`, `256`, `1024`, ... |
 | `top_p` | Percentage-based pruning | `None` | `0.0` to `1.0` |
 
 </details>
@@ -416,7 +420,7 @@ We welcome contributions! To add new models or KV pruning methods:
 4. **Add tests** and documentation
 5. **Submit a pull request**
 
-See our [contribution guidelines](CONTRIBUTING.md) for detailed instructions.
+See our [contribution guidelines](CONTRIBUTING.md) for detailed instructions. (under construction)
 
 ## 📜 Citation
 

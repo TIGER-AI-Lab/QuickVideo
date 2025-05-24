@@ -48,6 +48,8 @@ Long video understanding has emerged as a crucial capability for real-world appl
 ### 🔧 QuickDecoder
 - **Parallelized CPU-based decoder** that splits videos into keyframe-aligned intervals
 - **2-3× faster** than sequential processing through concurrent execution
+- QuickDecoder can be used as a standalone drop-in replacement for other libraries like decord and torchvision.
+- If you want to use QuickDecoder independantly, check it out [here](https://github.com/TIGER-AI-Lab/QuickCodec).
 
 ### ⚡ QuickPrefill
 - **Group-based prefilling** for memory-efficient activation handling

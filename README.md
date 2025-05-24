@@ -9,10 +9,10 @@ Efficient video loading and context prefill for hour-long video understanding
 
 <p align="center">
 | 
-<a href="https://github.com/TIGER-AI-Lab/QuickVideo?tab=readme-ov-file##installation"><b>Documentation</b></a> | 
+<a href="https://github.com/TIGER-AI-Lab/QuickVideo?tab=readme-ov-file#installation"><b>Documentation</b></a> | 
 <a href="https://arxiv.org/abs/2505.16175"><b>Paper</b></a> | 
 <a href="https://github.com/TIGER-AI-Lab/QuickCodec"><b>QuickCodec</b></a> |
-<a href="https://github.com/TIGER-AI-Lab/QuickVideo?tab=readme-ov-file##usage"><b>QuickPrefill</b></a> 
+<a href="https://github.com/TIGER-AI-Lab/QuickVideo?tab=readme-ov-file#usage"><b>QuickPrefill</b></a> 
 |
 </p>
 
@@ -212,6 +212,9 @@ done
 ```
 
 (Note: for LVBench you might need to unzip the videos by your own first after running it for one time.)
+
+## Contribution of new models and new kv pruning methods
+To be added.
 
 ## Citation
 If you find this repository useful, please consider citing our paper:

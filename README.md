@@ -8,6 +8,14 @@ Efficient video loading and context prefill for hour-long video understanding
 </h3>
 
 <p align="center">
+<em><strong>Benjamin Schneider*</strong> • <strong>Dongfu Jiang*</strong> • <strong>Chao Du</strong> • <strong>Tianyu Pang</strong> • <strong>Wenhu Chen</strong></em>
+</p>
+
+<p align="center">
+<sub>University of Waterloo • SeaAI Lab</sub>
+</p>
+
+<p align="center">
 | 
 <a href="https://github.com/TIGER-AI-Lab/QuickVideo?tab=readme-ov-file#installation"><b>Documentation</b></a> | 
 <a href="https://arxiv.org/abs/2505.16175"><b>Paper</b></a> | 

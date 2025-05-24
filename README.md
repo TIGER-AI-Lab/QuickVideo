@@ -21,7 +21,7 @@ Efficient video loading and context prefill for hour-long video understanding
 
 <p align="center">
 | 
-<a href="https://github.com/TIGER-AI-Lab/QuickVideo?tab=readme-ov-file#-quick-start"><b>Installation</b></a> | 
+<a href="https://github.com/TIGER-AI-Lab/QuickVideo?tab=readme-ov-file#-quick-start"><b>Quick Start</b></a> | 
 <a href="https://arxiv.org/abs/2505.16175"><b>Paper</b></a> | 
 <a href="https://github.com/TIGER-AI-Lab/QuickCodec"><b>QuickCodec</b></a> |
 <a href="https://github.com/TIGER-AI-Lab/QuickVideo?tab=readme-ov-file#2-run-quickvideo-recommended"><b>QuickPrefill</b></a> 
@@ -64,7 +64,18 @@ Long video understanding has emerged as a crucial capability for real-world appl
 
 ## 📊 Performance Results
 
-Our evaluation on 4 long video understanding benchmarks (VideoMME, LongVideoBench, LVBench, MLVU) demonstrates significant improvements:
+We evaluate both QuickCodec on video decoding efficiency (left figure) and QuickPrefill on avg QA accuracy results on 4 long video understanding benchmarks: VideoMME, LongVideoBench, LVBench, MLVU (right figure and hidden table). Results show significant speedup and memory saving while preserving 97% of the original performance.
+
+<table>
+  <tr>
+    <td width="34%">
+      <img src="./assets/imgs/video_processing_times.png" alt="Video Processing Times" width="100%">
+    </td>
+    <td width="66%">
+      <img src="./assets/imgs/kv_pruning_avg_performance.png" alt="KV Pruning Average Performance" width="100%">
+    </td>
+  </tr>
+</table>
 
 <details>
 <summary><b>Performance Table</b></summary>

@@ -174,3 +174,5 @@ cython_debug/
 .pypirc
 /test*
 /logs
+/test*
+/*.mp4

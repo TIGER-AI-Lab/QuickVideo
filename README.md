@@ -21,10 +21,10 @@ Efficient video loading and context prefill for hour-long video understanding
 
 <p align="center">
 | 
-<a href="#installation"><b>Installation</b></a> | 
+<a href="https://github.com/TIGER-AI-Lab/QuickVideo?tab=readme-ov-file#-quick-start"><b>Quick Start</b></a> | 
 <a href="https://arxiv.org/abs/2505.16175"><b>Paper</b></a> | 
 <a href="https://github.com/TIGER-AI-Lab/QuickCodec"><b>QuickCodec</b></a> |
-<a href="#usage"><b>QuickPrefill</b></a> 
+<a href="https://github.com/TIGER-AI-Lab/QuickVideo?tab=readme-ov-file#2-run-quickvideo-recommended"><b>QuickPrefill</b></a> 
 |
 </p>
 
@@ -48,8 +48,6 @@ Long video understanding has emerged as a crucial capability for real-world appl
 ### 🔧 QuickDecoder
 - **Parallelized CPU-based decoder** that splits videos into keyframe-aligned intervals
 - **2-3× faster** than sequential processing through concurrent execution
-- QuickDecoder can be used as a standalone drop-in replacement for other libraries like decord and torchvision.
-- If you want to use QuickDecoder independantly, check it out [here](https://github.com/TIGER-AI-Lab/QuickCodec).
 
 ### ⚡ QuickPrefill
 - **Group-based prefilling** for memory-efficient activation handling
@@ -66,7 +64,18 @@ Long video understanding has emerged as a crucial capability for real-world appl
 
 ## 📊 Performance Results
 
-Our evaluation on 4 long video understanding benchmarks (VideoMME, LongVideoBench, LVBench, MLVU) demonstrates significant improvements:
+We evaluate both QuickCodec on video decoding efficiency (left figure) and QuickPrefill on avg QA accuracy results on 4 long video understanding benchmarks: VideoMME, LongVideoBench, LVBench, MLVU (right figure and hidden table). Results show significant speedup and memory saving while preserving 97% of the original performance.
+
+<table>
+  <tr>
+    <td width="34%">
+      <img src="./assets/imgs/video_processing_times.png" alt="Video Processing Times" width="100%">
+    </td>
+    <td width="66%">
+      <img src="./assets/imgs/kv_pruning_avg_performance.png" alt="KV Pruning Average Performance" width="100%">
+    </td>
+  </tr>
+</table>
 
 <details>
 <summary><b>Performance Table</b></summary>
@@ -305,7 +314,7 @@ uv pip install flash-attn --no-build-isolation
 
 ### 1. Download Example Video
 ```bash
-wget https://github.com/SCZwangxiao/video-FlexReduc/raw/refs/heads/main/misc/Q8AZ16uBhr8_resized_fps2_mute.mp4
+wget https://github.com/TIGER-AI-Lab/QuickVideo/raw/refs/heads/dev/video/Q8AZ16uBhr8_resized_fps2_mute.mp4
 video_path="Q8AZ16uBhr8_resized_fps2_mute.mp4"
 ```
 
@@ -345,6 +354,7 @@ print(output)
 • Time saved: 10.57s ⚡
 
 🎬 Generated Response:
+['The video is a compilation of classic animated shorts featuring iconic characters from the 1940s and 1950s, showcasing slapstick humor and vibrant animation styles typical of that era. The clips include:\n\n1. **"A Bug\'s Life"**: A rabbit character is seen in a desert setting, engaging in a comedic chase sequence with a carrot. The rabbit exhibits exaggerated expressions and movements, typical of the cartoon\'s slapstick style.\n\n2. **"The Wabbit Who Could"**: Bugs Bunny appears in a whimsical scene where he is performing a magic trick involving a carrot. The animation is colorful and lively']
 "The video is a compilation of classic animated shorts featuring iconic 
 characters from the 1940s and 1950s, showcasing slapstick humor and 
 vibrant animation styles typical of that era..."

@@ -20,3 +20,7 @@ dependencies = [
     "torchcodec==0.2",
     "scipy",
 ]
+
+[tool.setuptools.packages.find]
+include = ["lvu"]
+exclude = ["assets"]

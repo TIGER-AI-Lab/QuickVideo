@@ -640,34 +640,27 @@ def dummy_call(
 
     return BatchFeature(data={**text_inputs, **image_inputs, **videos_inputs})
 
-def _get_initial_cache_position(self, input_ids, model_kwargs):
-    if "cache_position" in model_kwargs:
+import inspect
+def _get_initial_cache_position(self, *args, **kwargs):
+    # Get the function signature
+    sig = inspect.signature(self.old_get_initial_cache_position)
+    
+    # Get parameter names (excluding 'self')
+    param_names = [param.name for param in sig.parameters.values() 
+                   if param.name not in ('self', 'args', 'kwargs')]
+    
+    # Transform *args to **kwargs using parameter names
+    args_as_kwargs = dict(zip(param_names, args))
+    
+    # Combine with existing kwargs
+    all_kwargs = {**args_as_kwargs, **kwargs}
+    # Find model_kwargs in the mapped arguments
+    model_kwargs = all_kwargs.get('model_kwargs')
+    
+    # Early return if cache_position already exists in model_kwargs
+    if model_kwargs is not None and "cache_position" in model_kwargs:
         return model_kwargs
-    """Calculates `cache_position` for the pre-fill stage based on `input_ids` and optionally past length"""
-    # `torch.compile`-friendly `torch.arange` from a shape -- the lines below are equivalent to `torch.arange`
-    if "inputs_embeds" in model_kwargs and not self.config.is_encoder_decoder:
-        cache_position = torch.ones_like(model_kwargs["inputs_embeds"][0, :, 0], dtype=torch.int64).cumsum(0) - 1
-    elif "decoder_inputs_embeds" in model_kwargs and self.config.is_encoder_decoder:
-        cache_position = (
-            torch.ones_like(model_kwargs["decoder_inputs_embeds"][0, :, 0], dtype=torch.int64).cumsum(0) - 1
-        )
-    else:
-        cache_position = torch.ones_like(input_ids[0, :], dtype=torch.int64).cumsum(0) - 1
-
-    past_length = 0
-    if model_kwargs.get("past_key_values") is not None:
-        cache = model_kwargs["past_key_values"]
-        past_length = 0
-        if not isinstance(cache, Cache):
-            past_length = cache[0][0].shape[2]
-        elif hasattr(cache, "get_seq_length") and cache.get_seq_length() is not None:
-            past_length = cache.get_seq_length()
-
-        cache_position = cache_position[past_length:]
-
-    model_kwargs["cache_position"] = cache_position
-    return model_kwargs
-
+    return self.old_get_initial_cache_position(*args, **kwargs)
     
 def init_lvu_model(model, config: LVUConfig):
     """
@@ -677,12 +670,23 @@ def init_lvu_model(model, config: LVUConfig):
         model: The model to be initialized.
         config: The configuration for the LVU model.
     """
-    if isinstance(model, Qwen2_5_VLForConditionalGeneration):
-        decoder_layers = model.model.layers
-    elif isinstance(model, Qwen2_5_VLModel):
-        decoder_layers = model.layers
-    else:
-        raise ValueError("Model must be either Qwen2_5_VLForConditionalGeneration or Qwen2_5_VLModel")
+    _model = model
+    if isinstance(_model, Qwen2_5_VLForConditionalGeneration):
+        _model = _model.model
+        if not hasattr(model, "get_rope_index"):
+            # for transformers > 4.50.0
+            model.get_rope_index = _model.get_rope_index
+    if isinstance(_model, Qwen2_5_VLModel):
+        if hasattr(_model, "layers"):
+            _model = _model
+        elif hasattr(_model, "language_model"):
+            _model = _model.language_model
+        else:
+            raise ValueError("Qwen2_5_VLModel must have either `model` or `language_model` attribute.")
+    try:
+        decoder_layers = _model.layers
+    except AttributeError:
+        raise ValueError("Did not find `layers` attribute in the model. Please check your qwen2.5_vl source code and transformers version.") 
     
     total_layers= len(decoder_layers)
     for i, layer in enumerate(decoder_layers):
@@ -690,6 +694,7 @@ def init_lvu_model(model, config: LVUConfig):
         layer.forward = lvu_qwen25_vl_decoder_layer_forward.__get__(layer)
         layer.self_attn.forward = lvu_qwen25_vl_flash_attention_2_forward.__get__(layer.self_attn)
         layer.lvu_layer_config = LVULayerConfig(layer_idx=layer.self_attn.layer_idx, total_layers=total_layers, lvu_config=config)
+    model.old_get_initial_cache_position = model._get_initial_cache_position
     model._get_initial_cache_position = _get_initial_cache_position.__get__(model)
     
     return model

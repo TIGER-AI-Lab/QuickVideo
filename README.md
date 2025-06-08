@@ -310,6 +310,9 @@ uv pip install -e .
 uv pip install flash-attn --no-build-isolation
 ```
 
+**Important**
+Please use `transformers==4.50.0` to run and it has been tested. Higher version's transformers library may not work because they have updated the source code of Qwen VL models at some versions after it (e.g. `transformers==4.52.4`). We will try to make it compatible with the latest version in the future.
+
 ## 🎮 Quick Start
 
 ### 1. Download Example Video

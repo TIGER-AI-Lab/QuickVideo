@@ -20,6 +20,7 @@ from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
     repeat_kv,
     _flash_attention_forward,
 )
+from torch.profiler import profile, record_function, ProfilerActivity
 
 import qwen_vl_utils.vision_process
 from qwen_vl_utils.vision_process import *
@@ -747,8 +748,8 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     print(f"total time spent fetching frames was: {video_processing_time}")
     print(f"total time spent on processor was: {processor_time}")
     print(f"total time spent on prefill was: {total_prefill}")
-    print(f"total time spent on e2e fetching and decoding was: {e2e_time}")
     print(f"total time spent on decoding was: {decoding_time}")
+    print(f"total time spent on e2e fetching and decoding was: {e2e_time}")
     print(f"Time saved by interleaved processing was: {video_processing_time + processor_time + total_prefill + decoding_time - e2e_time}")
 
     generated_ids_trimmed = [

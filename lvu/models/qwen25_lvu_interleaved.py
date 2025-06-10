@@ -1,10 +1,6 @@
 import torch
 import numpy as np
-import dataclasses
 import time
-import hashlib
-import random
-import math
 import time
 import sys
 import types
@@ -274,8 +270,6 @@ class PixelIterator:
         self.processor_timing += e - s
         return pixels
 
-
-
 class AsyncPixelIterator(PixelIterator):
     def __init__(self, qwen_vr, vr, frames_per_block, video_kwargs, processor, buffer_size=3):
         super().__init__(qwen_vr, vr, frames_per_block, video_kwargs, processor)
@@ -332,7 +326,6 @@ class AsyncPixelIterator(PixelIterator):
             self.qwen_vr.total_timing += e - s
             #save_image_to_home(frames[8], f"img/{self.iterations}.png")
             s = time.time()
-            # Process the frame
             pixels = self.processor(
                 text="a",
                 images=[],
@@ -394,8 +387,8 @@ def _read_video_interleaved(
 ):
     
     video_path = ele["video"]
-    #num_cores = int(os.environ.get("DEEPCODEC_CORES", "4"))
-    vr = InterleavedVideoReader(video_path, num_threads=8, num_intervals=64)
+    num_cores = int(os.environ.get("DEEPCODEC_CORES", "4"))
+    vr = InterleavedVideoReader(video_path, num_threads=num_cores, num_intervals=64)
     # TODO: support start_pts and end_pts
     if 'video_start' in ele or 'video_end' in ele:
         raise NotImplementedError("not support start_pts and end_pts in deepcodec for now.")
@@ -476,15 +469,12 @@ def process_vision_info(
     return image_inputs, video_inputs[0]
 
 class QwenVideoReaderInterleaved:
-
-    def __init__(self, path, threads, intervals, processor):
+    def __init__(self, path, processor):
         self.total_timing = 0
         self.path = path
         self.frames_per_block = None
         self.batch = None
         self.processor = processor
-        self.threads = threads
-        self.intervals = intervals
         
     def process(self, conv):
 
@@ -704,7 +694,7 @@ def run_lvu_model(self, question, video_path, **generation_kwargs):
     fps = lvu_config.fps
     num_frames = lvu_config.num_frames
     extra_kwargs = lvu_config.extra_kwargs or {}
-    max_pixels = extra_kwargs.get("max_pixels", 360 * 420)
+    max_pixels = extra_kwargs.get("max_pixels", None)
     min_pixels = extra_kwargs.get("min_pixels", None)
 
     video_content = {
@@ -760,7 +750,7 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     cache_dir.mkdir(parents=True, exist_ok=True)
     if not cache_file.exists() or False:        
         # Interleaved processing
-        vr = QwenVideoReaderInterleaved(video_path,16,32,processor)
+        vr = QwenVideoReaderInterleaved(video_path, processor)
         vr.process(messages)
 
         # used for finding correct shapes of blocks
@@ -932,8 +922,8 @@ def chat_lvu_model(self, messages, **generation_kwargs):
     print(f"total time spent fetching frames was: {vr.total_timing}")
     print(f"total time spent on processor was: {pixel_iter.processor_timing}")
     print(f"total time spent on prefill was: {total_prefill_time}")
-    print(f"total time spent on e2e fetching and decoding was: {e2e_time}")
     print(f"total time spent on decoding was: {decoding_time}")
+    print(f"total time spent on e2e fetching and decoding was: {e2e_time}")
     print(f"Time saved by interleaved processing was: {vr.total_timing + pixel_iter.processor_timing + total_prefill_time + decoding_time - e2e_time}")
 
     generated_ids_trimmed = [

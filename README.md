@@ -363,6 +363,8 @@ characters from the 1940s and 1950s, showcasing slapstick humor and
 vibrant animation styles typical of that era..."
 ```
 
+**Important**: We recommend to run the interleaved version on **at least 2 cpu cores**, otherwise the interleaving strategy will do no better than the standard sequential processing. If you find no improvement using interleaved processing, then please check the number of CPU cores available on your machine.
+
 ### 3. Baseline Comparison
 **Without interleaved processing** - 🐌 **Slower but still optimized**
 

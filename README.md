@@ -391,7 +391,7 @@ cd lmms-eval
 uv pip install -e .
 
 # Configure environment
-export DEEPCODEC_CORES=8
+export QUICKCODEC_CORES=8
 export FORCE_QWENVL_VIDEO_READER='deepcodec'
 ```
 
@@ -414,7 +414,22 @@ accelerate launch --num_processes 8 --main_process_port 12351 -m lmms_eval \
 ## 🧪 Advanced Configuration
 
 <details>
-<summary><b>Configuration Parameters</b></summary>
+<summary><b>QuickCodec Configuration</b></summary>
+
+| Environment Variable | Description | Default | Options |
+|-----------|-------------|---------|---------|
+| `QUICKCODEC_CORES` | CPU cores used for video decoding. | `8`| `2-128` |
+| `QUICKCODEC_INTERVALS` | Number of video segments to queue for loading. | `64`| `Any` |
+
+- Environment variables can be changed during execution to suport didferent settings for different videos.
+- The more cores you can use the better! Ideally several cores should be reserved for video decoding.
+- `QUICKCODEC_INTERVALS` is used for our overlapped prefill (see paper for details). Each intervals should be *at least* a keyframe apart.
+
+</details>
+
+
+<details>
+<summary><b>QuickPrefill Configuration</b></summary>
 
 | Parameter | Description | Default | Options |
 |-----------|-------------|---------|---------|
@@ -426,6 +441,7 @@ accelerate launch --num_processes 8 --main_process_port 12351 -m lmms_eval \
 | `top_p` | Percentage-based pruning | `None` | `0.0` to `1.0` |
 
 </details>
+
 
 ## 🤝 Contributing
 

@@ -227,7 +227,7 @@ def _read_video_decord_cpu(
         torch.Tensor: the video tensor with shape (T, C, H, W).
     """
     import decord
-    num_cores = int(os.environ.get("DEEPCODEC_CORES", "4"))
+    num_cores = int(os.environ.get("QUICKCODEC_CORES", "4"))
     video_path = ele["video"]
     st = time.time()
     vr = decord.VideoReader(video_path, num_threads=num_cores)
@@ -283,7 +283,7 @@ def _read_video_deepcodec(
     resize = ele.pop("resize")
 
     st = time.time()
-    num_cores = int(os.environ.get("DEEPCODEC_CORES", "4"))
+    num_cores = int(os.environ.get("QUICKCODEC_CORES", "4"))
     vr = DCVideoReader(video_path, num_threads=num_cores)
 
     total_frames, video_fps = len(vr), vr.get_fps()

@@ -12,7 +12,7 @@
             ],
             "env": {
                 "CUDA_VISIBLE_DEVICES": "0",
-                "DEEPCODEC_CORES": "16",
+                "QUICKCODEC_CORES": "16",
                 "DEEPCODEC_DISABLED": "TRUE"
             },
             "justMyCode": false
@@ -25,7 +25,7 @@
             "console": "integratedTerminal",
             "env": {
                 "CUDA_VISIBLE_DEVICES": "0",
-                "DEEPCODEC_CORES": "8"
+                "QUICKCODEC_CORES": "8"
             },
             "args": [
                 "qwen25_lvu_interleaved"
@@ -43,7 +43,7 @@
             ],
             "env": {
                 "CUDA_VISIBLE_DEVICES": "0",
-                "DEEPCODEC_CORES": "8",
+                "QUICKCODEC_CORES": "8",
                 "DEEPCODEC_DISABLED": "TRUE"
             },
             "justMyCode": false

@@ -25,7 +25,7 @@ from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
     _flash_attention_forward,
 )
 from transformers.models.qwen2_5_vl.processing_qwen2_5_vl import Qwen2_5_VLProcessorKwargs, BatchFeature
-
+import warnings
 import qwen_vl_utils.vision_process
 from qwen_vl_utils.vision_process import *
 from deepcodec import InterleavedVideoReader
@@ -387,8 +387,15 @@ def _read_video_interleaved(
 ):
     
     video_path = ele["video"]
-    num_cores = int(os.environ.get("DEEPCODEC_CORES", "4"))
-    vr = InterleavedVideoReader(video_path, num_threads=num_cores, num_intervals=64)
+
+    num_cores = int(os.environ.get("QUICKCODEC_CORES", "8"))
+    num_intervals = int(os.environ.get("QUICKCODEC_INTERVALS", "64"))
+
+    if os.cpu_count()-1 > num_cores:
+        num_cores = os.cpu_count()-1 if os.cpu_count()-1 > 0 else 1
+        warnings.warn(f"QuickCodec requested more cores than the system supports, num_cores was set to {num_cores}.")
+    
+    vr = InterleavedVideoReader(video_path, num_threads=num_cores, num_intervals=num_intervals)
     # TODO: support start_pts and end_pts
     if 'video_start' in ele or 'video_end' in ele:
         raise NotImplementedError("not support start_pts and end_pts in deepcodec for now.")

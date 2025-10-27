@@ -307,7 +307,7 @@ We evaluate both QuickCodec on video decoding efficiency (left figure) and Quick
 uv sync
 source .venv/bin/activate
 uv pip install -e .
-uv pip install flash-attn --no-build-isolation
+uv pip install flash-attn==2.7.3 --no-build-isolation
 ```
 
 **Important**
